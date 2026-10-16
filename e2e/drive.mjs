@@ -1022,6 +1022,7 @@ const analyticsJourneys = {
   },
   'analytics-offline': async (s) => { // the network drops right after load: counts fail silently, the app is unaffected
     const p = s.page;
+    await p.evaluate(() => navigator.serviceWorker.ready.then(() => 1)); // let the service worker finish registering first; going offline mid-registration is a page error on newer Playwright
     await s.context.setOffline(true);
     await ritualDay(s, { yes: true, note: NOTE.first, line: FIRST_DAY });
     await s.step('open-history', async () => { await SEE_DAYS(p).click(); await expectHistory(p, { total: 1, month: 'October', rows: [['Wed 14', 'Ask for the raise']] }); });
