@@ -2,7 +2,7 @@
 
 The app is a single-screen offline-first PWA (Vite + React + TS, vite-plugin-pwa). No accounts and no server-side state; the only backend is the one-endpoint Worker for anonymous counts, which the journeys stub. All app state is one localStorage key, `one-thing:v3`. (`one-thing:events` holds only which anonymous count names went out today; see `features/analytics.md`.) The screen depends on that state and on the **local clock**, so every journey runs in a fresh browser context (empty storage, no service worker yet) with timezone `America/New_York` and a Playwright fake clock paused at a fixed local time.
 
-The harness is `e2e/vdt` (bash) plus `e2e/drive.mjs` (Playwright journeys). It uses the repo's own devDependencies `playwright` and `@playwright/test` 1.49.1 and their own Chromium (`npx playwright install chromium`). Run every command from the repo root.
+The harness is `e2e/vdt` (bash) plus `e2e/drive.mjs` (Playwright journeys). It uses the repo's own devDependencies `playwright` and `@playwright/test` 1.64.1 and their own Chromium (`npx playwright install chromium`). Run every command from the repo root.
 
 ## Launch
 
