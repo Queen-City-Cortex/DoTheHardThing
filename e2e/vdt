@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Verification harness for Do The Hard Thing. Usage:
+#   vdt launch | doctor | journey <name> [more names] | cleanup | list
+set -euo pipefail
+HERE="$(cd "$(dirname "$0")" && pwd)"
+REPO="$(cd "$HERE/.." && pwd)"
+PORT="${VDT_PORT:-4317}"
+TMP="${TMPDIR:-/tmp}"; TMP="${TMP%/}"
+PIDF="$TMP/vdt-$PORT.pid"; LOG="$TMP/vdt-$PORT.log"
+export VDT_URL="http://127.0.0.1:$PORT"
+export VDT_EVIDENCE="${VDT_EVIDENCE:-$TMP/do-the-hard-thing-e2e}"
+SETSID=""; command -v setsid >/dev/null 2>&1 && SETSID=setsid
+cmd="${1:-}"; shift || true
+case "$cmd" in
+  launch)
+    cd "$REPO"
+    [ -d node_modules ] || npm ci
+    npx playwright install chromium >/dev/null
+    if (exec 3<>"/dev/tcp/127.0.0.1/$PORT") 2>/dev/null; then echo "port $PORT busy; set VDT_PORT or run cleanup" >&2; exit 1; fi
+    npm run build >"$LOG" 2>&1
+    ${SETSID:-} npx vite preview --host 127.0.0.1 --port "$PORT" --strictPort >>"$LOG" 2>&1 & echo $! >"$PIDF"
+    for i in $(seq 60); do curl -fs "$VDT_URL/" | grep -q '<div id="root">' && { echo "ready $VDT_URL (pid $(cat "$PIDF"))"; exit 0; }; sleep 0.5; done
+    echo "not ready; see $LOG" >&2; exit 1 ;;
+  doctor)
+    [ -f "$PIDF" ] && kill -0 "$(cat "$PIDF")" 2>/dev/null || { echo "FAIL: no instance started by vdt on $PORT"; exit 1; }
+    curl -fs "$VDT_URL/" | grep -q '<div id="root">' || { echo "FAIL: $VDT_URL not serving the app"; exit 1; }
+    curl -fs "$VDT_URL/sw.js" >/dev/null || { echo "FAIL: no sw.js (not a production build?)"; exit 1; }
+    built=$(stat -c %Y "$REPO/dist/index.html" 2>/dev/null || stat -f %m "$REPO/dist/index.html"); head=$(git -C "$REPO" log -1 --format=%ct)
+    echo "OK pid $(cat "$PIDF") url $VDT_URL commit $(git -C "$REPO" rev-parse --short HEAD) dirty=$(git -C "$REPO" status --porcelain -- src | wc -l)"
+    [ "$built" -ge "$head" ] || echo "WARN: dist older than HEAD commit; relaunch" ;;
+  journey) cd "$REPO" && node "$HERE/drive.mjs" "$@" ;;
+  list) cd "$REPO" && node "$HERE/drive.mjs" --list ;;
+  cleanup)
+    if [ -f "$PIDF" ]; then kill -- -"$(cat "$PIDF")" 2>/dev/null || kill "$(cat "$PIDF")" 2>/dev/null || true; rm -f "$PIDF"; fi
+    echo "stopped vdt instance on $PORT; evidence kept in $VDT_EVIDENCE" ;;
+  *) sed -n 2,3p "$0"; exit 2 ;;
+esac

@@ -1,0 +1,50 @@
+{
+  "name": "do-the-hard-thing",
+  "description": "A morning method as an offline-first PWA: name what you are avoiding, pick one thing, protect one block.",
+  "private": true,
+  "version": "0.0.0",
+  "license": "MIT",
+  "author": "Jeffery Hoffman (Queen City Cortex)",
+  "homepage": "https://dothehardthing.app",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Queen-City-Cortex/DoTheHardThing.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Queen-City-Cortex/DoTheHardThing/issues"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@fontsource-variable/instrument-sans": "^5.3.0",
+    "@fontsource-variable/newsreader": "^5.3.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.13.0",
+    "@playwright/test": "^1.49.1",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.3",
+    "eslint": "^9.13.0",
+    "eslint-plugin-react-hooks": "^5.0.0",
+    "eslint-plugin-react-refresh": "^0.4.14",
+    "globals": "^15.11.0",
+    "playwright": "^1.49.1",
+    "typescript": "~5.6.2",
+    "typescript-eslint": "^8.11.0",
+    "vite": "^5.4.10",
+    "vite-plugin-pwa": "^0.21.2",
+    "vitest": "^2.1.9"
+  }
+}

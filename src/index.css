@@ -1,0 +1,196 @@
+/* Do The Hard Thing: design tokens and components.
+   Direction: a quiet printed page before screens. Cool paper, blue-black ink,
+   one warm thing only: the block, which fills with first light as it runs. */
+
+:root{
+  --paper:#f4f3ef; --ink:#1f2329; --muted:#5c616a; --sub:#4d525b; --line:#d8d9d3; --well:#eae9e4; --well-2:#e1e0da;
+  --acc:#34507a; --acc-fg:#f4f3ef;
+  --dawn:#efc585; --dawn-2:#f9e7c6;
+  --pushed-bg:#dfe5ee; --pushed-fg:#34507a;
+  --risky-bg:#efdbd2; --risky-fg:#7b4a37;
+  --anxious-bg:#e6e1ee; --anxious-fg:#5a4e7c;
+  --serif:'Newsreader',ui-serif,Georgia,'Iowan Old Style',serif;
+  --sans:'Instrument Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --r:14px; --r-lg:22px; --tap:52px;
+  color-scheme:light dark;
+  -webkit-tap-highlight-color:transparent;
+}
+@media (prefers-color-scheme:dark){:root{
+  --paper:#15181d; --ink:#e8e6e1; --muted:#9a9ea6; --sub:#adb1b8; --line:#2b3038; --well:#1d2127; --well-2:#242931;
+  --acc:#9db6d8; --acc-fg:#15181d;
+  --dawn:#d9a861; --dawn-2:#5a4425;
+  --pushed-bg:#263548; --pushed-fg:#b7c9e2;
+  --risky-bg:#45302a; --risky-fg:#e7c2b3;
+  --anxious-bg:#332d44; --anxious-fg:#cdc3e3;
+}}
+
+*{box-sizing:border-box}
+html,body,#root{height:100%;margin:0}
+body{background:var(--paper);color:var(--ink);font-family:var(--serif);font-size:17px;line-height:1.5;-webkit-text-size-adjust:100%;overscroll-behavior:none;font-feature-settings:"kern","liga"}
+/* item text is whatever was pasted: a 60-character URL breaks where it must instead of widening the page */
+body{overflow-wrap:anywhere}
+.plain li>span:first-child,.dates .t,.choice>span,h1{min-width:0}
+:focus-visible{outline:2px solid var(--acc);outline-offset:3px;border-radius:4px}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important}}
+
+/* ---------- shell ---------- */
+.app{min-height:100dvh;display:flex;flex-direction:column;max-width:560px;margin:0 auto;
+  padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+.top{display:flex;justify-content:space-between;align-items:center;padding:14px 24px 0;min-height:56px}
+.brand{font-style:italic;font-weight:450;font-size:1.15rem;letter-spacing:.005em}
+.main{flex:1;display:flex;flex-direction:column;padding:0 24px 20px}
+.save-note{padding:0 24px 16px}
+.card{flex:1;display:flex;flex-direction:column;gap:16px;padding-top:28px}
+.center{text-align:center;align-items:center}
+.center .actions{align-self:stretch}
+
+/* ---------- type ---------- */
+h1:focus{outline:none}
+h1{font-family:var(--serif);font-size:2rem;line-height:1.15;margin:0;font-weight:400;letter-spacing:-.012em;text-wrap:balance}
+.hero{font-size:2.6rem;line-height:1.08;letter-spacing:-.018em;margin-top:8px}
+.item-title{font-size:1.75rem;line-height:1.2}
+.eyebrow{font-family:var(--sans);font-size:.85rem;color:var(--muted);margin:0;letter-spacing:.01em}
+.muted{color:var(--sub);margin:0;line-height:1.5;max-width:34em}
+.small{font-size:.94rem}
+.center .muted{margin-inline:auto}
+blockquote{margin:6px 0;padding:0;font-style:italic;font-size:1.15rem;line-height:1.4;color:var(--ink);max-width:30em}
+cite{display:block;font-style:normal;font-family:var(--sans);font-size:.85rem;color:var(--muted);margin-top:6px}
+a{color:var(--acc);text-underline-offset:.15em}
+strong{font-weight:600}
+
+/* ---------- steps (the ritual is a sequence) ---------- */
+.steps{display:flex;gap:6px;margin-bottom:4px}
+.steps i{display:block;height:3px;flex:1;max-width:44px;border-radius:2px;background:var(--line)}
+.steps i.on{background:var(--ink)}
+.steps i.done{background:var(--muted)}
+
+/* ---------- buttons ---------- */
+button{font:inherit;font-family:var(--sans);font-size:1rem;font-weight:500;min-height:var(--tap);border-radius:var(--r);border:1px solid var(--line);
+  background:transparent;color:var(--ink);padding:0 18px;cursor:pointer;touch-action:manipulation;transition:transform .08s}
+button:active{transform:scale(.985)}
+button:disabled{opacity:.38;cursor:default;transform:none}
+.primary{background:var(--ink);color:var(--paper);border-color:var(--ink);width:100%;font-weight:600}
+.secondary{width:100%;background:transparent}
+.big{min-height:64px;font-size:1.05rem;border-radius:18px}
+.link{border:none;min-height:44px;color:var(--acc);padding:0 6px;font-weight:500;background:none;text-decoration:underline;text-underline-offset:.18em;text-decoration-thickness:1px}
+.icon{min-height:40px;width:40px;padding:0;border:none;font-size:1.3rem;line-height:1;color:var(--muted);background:none;border-radius:50%}
+.icon:hover{background:var(--well)}
+.actions{display:flex;flex-direction:column;gap:10px;margin-top:auto;padding-top:16px}
+.actions.row{flex-direction:row}.actions.row>*{flex:1}
+.sticky{position:sticky;bottom:0;padding-bottom:calc(8px + env(safe-area-inset-bottom));
+  background:linear-gradient(to bottom,transparent,var(--paper) 22%)}
+
+/* selected states share one voice: ink fill */
+.on,.yn .on,.choice.on,.seg .on{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+
+/* ---------- choices: a list, lined like a page ---------- */
+.choices{display:flex;flex-direction:column}
+.choice{display:grid;grid-template-columns:22px minmax(0,1fr) auto;align-items:center;gap:14px;text-align:left;min-height:64px;
+  padding:12px 4px;border:none;border-bottom:1px solid var(--line);border-radius:0;background:none;
+  font-family:var(--serif);font-size:1.15rem;font-weight:400;line-height:1.3}
+.choice:first-child{border-top:1px solid var(--line)}
+.choice::before{content:"";width:18px;height:18px;border-radius:50%;border:1.5px solid var(--muted)}
+.choice.on{background:none;color:var(--ink);border-color:var(--line)}
+.choice.on::before{background:var(--ink);border-color:var(--ink);box-shadow:inset 0 0 0 3px var(--paper)}
+.choice:active{transform:none;background:var(--well)}
+.choice:disabled{opacity:.38}
+
+/* ---------- tags ---------- */
+.tag{font-family:var(--sans);font-size:.78rem;font-weight:500;border-radius:999px;padding:4px 10px;white-space:nowrap;background:var(--well-2);color:var(--muted);vertical-align:middle;line-height:1.2}
+.tag.pushed{background:var(--pushed-bg);color:var(--pushed-fg)}
+.tag.risky{background:var(--risky-bg);color:var(--risky-fg)}
+.tag.anxious{background:var(--anxious-bg);color:var(--anxious-fg)}
+.item-title .tag{position:relative;top:-.35em;margin-left:.2em}
+
+/* ---------- inputs ---------- */
+.adder{display:flex;gap:8px}
+.adder input{flex:1;min-width:0;font:inherit;font-family:var(--serif);font-size:1.15rem;min-height:var(--tap);padding:0 16px;border-radius:var(--r);
+  border:1px solid transparent;background:var(--well);color:var(--ink)}
+.adder input::placeholder{color:var(--muted);opacity:1}
+.adder input:focus{outline:none;border-color:var(--ink);background:var(--paper)}
+.adder button{width:auto;padding:0 20px}
+input[type=time]{font-family:var(--sans);font-size:1.05rem;min-height:var(--tap);padding:0 14px;border-radius:var(--r);border:1px solid transparent;background:var(--well);color:var(--ink)}
+input[type=time]:focus{outline:none;border-color:var(--ink)}
+
+.plain{list-style:none;padding:0;margin:0;display:flex;flex-direction:column}
+.plain li{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 0 10px 4px;border-bottom:1px solid var(--line);font-size:1.1rem;line-height:1.3}
+.plain li:first-child{border-top:1px solid var(--line)}
+.row-end{display:flex;align-items:center;gap:6px}
+
+/* the two questions */
+.q{display:flex;flex-direction:column;gap:12px;padding-top:6px}
+.q p{margin:0;line-height:1.4;font-size:1.2rem;max-width:26em}
+.yn{display:flex;gap:10px}.yn button{flex:1}
+
+/* duration */
+.seg{display:flex;gap:8px;font-family:var(--sans)}
+.seg button{flex:1;font-variant-numeric:tabular-nums}
+
+/* checkbox row */
+.toggle{display:flex;gap:12px;align-items:center;font-family:var(--sans);font-size:.98rem;min-height:48px;padding:6px 0;cursor:pointer}
+.toggle input{width:22px;height:22px;margin:0;accent-color:var(--ink);flex:none}
+.gentle{font-style:italic}
+
+/* ---------- the block: a protected stretch of time that fills with first light ---------- */
+.block{--p:0;position:relative;width:100%;max-width:340px;height:clamp(240px,42vh,360px);margin:8px auto 4px;border-radius:28px;
+  background:var(--well);overflow:hidden;display:grid;place-items:center;isolation:isolate}
+.block .light{position:absolute;left:0;right:0;bottom:0;height:calc(var(--p)*100%);min-height:6px;
+  background:linear-gradient(to top,var(--dawn),var(--dawn-2));transition:height 1s linear,opacity .4s}
+.block .light::before{content:"";position:absolute;left:0;right:0;top:-1px;height:1px;background:rgba(255,255,255,.4)}
+.block.paused .light{opacity:.45}
+.time{position:relative;z-index:1;font-family:var(--sans);font-weight:400;font-size:3.4rem;letter-spacing:-.02em;line-height:1;font-variant-numeric:tabular-nums;color:var(--ink)}
+.block .left{position:absolute;z-index:1;top:18px;font-family:var(--sans);font-size:.85rem;color:var(--muted)}
+.block.paused .time{color:var(--muted)}
+
+/* about */
+.rule{border:0;border-top:1px solid var(--line);margin:4px 0;width:100%}
+
+/* close and your days: counts are quiet, never a score */
+.note{font-style:italic;color:var(--ink);font-size:1.2rem;line-height:1.4;margin:0;max-width:26em}
+.tally{font-family:var(--sans);font-size:.94rem;color:var(--muted);margin:0;display:flex;gap:8px;align-items:baseline}
+.tally strong{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums;font-size:1.05rem}
+.link.flush{padding:0}
+.label{font-family:var(--sans);font-size:.85rem;color:var(--muted);margin:6px 0 0}
+.dates,.months{list-style:none;padding:0;margin:0}
+.dates li{display:flex;justify-content:space-between;gap:12px;padding:10px 4px;border-bottom:1px solid var(--line);font-size:1.05rem;line-height:1.3}
+.dates li:first-child{border-top:1px solid var(--line)}
+.dates .d{font-family:var(--sans);font-size:.95rem;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.dates .t{flex:1;text-align:right}
+.months{display:flex;flex-direction:column}
+.months li,.row-link{display:flex;justify-content:space-between;align-items:baseline;padding:12px 4px;border-bottom:1px solid var(--line);font-family:var(--sans);font-size:.98rem}
+.months li:first-child,.row-link{border-top:1px solid var(--line)}
+.months span:last-child,.row-link span:last-child{color:var(--muted);font-variant-numeric:tabular-nums}
+.row-link{width:100%;min-height:0;border-left:0;border-right:0;border-radius:0;background:none;font-weight:400;text-align:left}
+.row-link:active{transform:none;background:var(--well)}
+
+/* first-visit welcome: the whole method on one screen */
+.welcome{gap:10px;padding-top:20px}
+.welcome .eyebrow{font-size:1rem}
+.promise{font-size:2.15rem;line-height:1.14;margin-top:6px}
+.how{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column}
+.how li{display:grid;grid-template-columns:36px minmax(0,1fr);gap:14px;align-items:start;padding:14px 0;border-bottom:1px solid var(--line)}
+.how li:first-child{border-top:1px solid var(--line)}
+.how .n{width:34px;height:34px;border-radius:50%;border:1.5px solid var(--ink);display:grid;place-items:center;font-family:var(--sans);font-weight:600;font-size:1rem;margin-top:1px}
+.how b{display:block;font-weight:500;font-size:1.25rem;line-height:1.25}
+.how .d{display:block;color:var(--sub);font-size:1rem;line-height:1.4;margin-top:2px}
+.src{margin:0;font-size:1rem;color:var(--sub);line-height:1.45}
+.src a{display:inline-flex;align-items:center;min-height:44px;font-family:var(--sans);font-weight:500;font-size:1rem}
+.assure{text-align:center;font-family:var(--sans);font-size:1rem;color:var(--sub);margin:2px 0 0}
+.cta{margin-top:auto;display:flex;flex-direction:column;gap:12px;padding-top:12px}
+#privacy{display:flex;flex-direction:column;gap:8px}
+.hour{text-align:center;font-family:var(--sans);font-size:.94rem;color:var(--sub);margin:-4px 0 0}
+/* small or short phones: the whole first-visit welcome (Start, hour line, assurance) fits 320x640 and 375x667 without a scroll */
+@media (max-width:380px),(max-height:700px){
+  .top{min-height:44px;padding-top:8px}
+  .welcome{padding-top:6px;gap:8px}
+  .promise{font-size:1.7rem;margin-top:2px}
+  .how li{padding:8px 0;gap:12px;grid-template-columns:30px minmax(0,1fr)}
+  .how .n{width:28px;height:28px;font-size:.9rem}
+  .how b{font-size:1.1rem}
+  .how .d{font-size:.92rem;line-height:1.3}
+  .src{font-size:.94rem;line-height:1.35}
+  .cta{padding-top:4px;gap:8px}
+  .cta .big{min-height:56px}
+  .hour{margin:-2px 0 0}
+  .main{padding-bottom:12px}
+}

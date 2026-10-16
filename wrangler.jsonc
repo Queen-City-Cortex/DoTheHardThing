@@ -1,0 +1,18 @@
+{
+  "name": "dothehardthing",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    // only /api/* runs the Worker; every other request is served straight from ./dist
+    "run_worker_first": ["/api/*"]
+  },
+  // anonymous counts (started / finished / opened_history); created automatically on the first write
+  "analytics_engine_datasets": [{ "binding": "EVENTS", "dataset": "dothehardthing_events" }],
+  "routes": [
+    { "pattern": "dothehardthing.app", "custom_domain": true },
+    { "pattern": "www.dothehardthing.app", "custom_domain": true }
+  ]
+}
