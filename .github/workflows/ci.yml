@@ -12,8 +12,8 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -21,3 +21,49 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
+
+  # Deploys to Cloudflare only after `check` passes, and only for a push to master in
+  # this repository: never for pull requests, never for forks (forks have no secrets anyway).
+  deploy:
+    needs: check
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master' && github.repository == 'Queen-City-Cortex/DoTheHardThing'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    # One deploy at a time. A newer push waits instead of cancelling a deploy that is already running.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Deploy with Wrangler
+        # Pinned Wrangler. The token and account id exist only in this step's environment.
+        run: npx --yes wrangler@4.86.0 deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Smoke check the live site
+        # The new build must be the one being served: its entry script name (hashed) has to appear in the live HTML.
+        run: |
+          set -euo pipefail
+          SITE=https://dothehardthing.app
+          ENTRY=$(grep -o 'assets/index-[A-Za-z0-9_-]*\.js' dist/index.html | head -1)
+          [ -n "$ENTRY" ] || { echo "no entry script found in dist/index.html"; exit 1; }
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            code=$(curl -s -o /tmp/index.html -w '%{http_code}' "$SITE/") || code=000
+            if [ "$code" = 200 ] && grep -q '<div id="root">' /tmp/index.html && grep -q "$ENTRY" /tmp/index.html; then
+              api=$(curl -s -o /dev/null -w '%{http_code}' "$SITE/api/event") || api=000
+              img=$(curl -s -o /dev/null -w '%{http_code} %{content_type}' "$SITE/og-image.png") || img=000
+              echo "page 200, serves $ENTRY; GET /api/event -> $api (Worker answers 405); og-image -> $img"
+              [ "$api" = 405 ] && [ "${img%% *}" = 200 ] && exit 0
+            fi
+            echo "attempt $i: page $code, not live yet; waiting 15s"; sleep 15
+          done
+          echo "smoke check failed: the new build is not being served"; exit 1

@@ -21,6 +21,8 @@ npm run build
 
 CI runs the same three commands on Node 22. A pull request should pass all of them.
 
+Merging to `master` deploys the live site automatically once CI passes (see [Automatic deploy](./README.md#automatic-deploy) for the required secrets and how to roll back). Only maintainers merge. Contributors never need Cloudflare credentials: pull requests and forks only run the checks.
+
 Changes that touch what a person sees or does (screens, copy, the block timer, closing the day) should also pass the end-to-end journeys in [`e2e/`](./e2e/README.md). For example: `e2e/vdt launch && e2e/vdt journey first-visit start-end-block`. If you change behavior, add or update a journey or a unit test with it.
 
 ## Pull request expectations
