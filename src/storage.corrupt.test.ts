@@ -25,7 +25,7 @@ const BAD_DAYS: [string, unknown][] = [
   ['items is a number', { ...goodDay, items: 7 }],
   ['items is missing', (() => { const d: Record<string, unknown> = { ...goodDay }; delete d.items; return d; })()],
   ['items is null', { ...goodDay, items: null }],
-  ['an item is a string, text is not', { ...goodDay, items: [{ ...goodItem, text: 42 }] }],
+  ['the text of an item is a number', { ...goodDay, items: [{ ...goodItem, text: 42 }] }],
   ['an item has no id', { ...goodDay, items: [{ text: 'x', tags: ['pushed'] }] }],
   ['openedAt is a string', { ...goodDay, openedAt: 'yesterday' }],
   ['block is a string', { ...goodDay, block: 'running' }],

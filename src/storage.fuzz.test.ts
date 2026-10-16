@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { load } from './storage';
+import { decodeDays } from './decode';
 import * as L from './logic';
 
 afterEach(() => { vi.unstubAllGlobals(); });
@@ -35,16 +36,19 @@ describe('fuzz: no stored shape reaches render as a crash', () => {
     let crashes = 0; let first = '';
     for (let n = 0; n < 2000; n++) {
       const r = rng(n + 1);
-      const text = JSON.stringify(mutate(valid, r)) ?? 'null';
+      const mutated = mutate(valid, r);
+      const text = JSON.stringify(mutated) ?? 'null'; // JSON turns NaN and Infinity into null, so the decoder also gets the in-memory value
       const m = new Map([['one-thing:v3', text]]);
       vi.stubGlobal('localStorage', { getItem: (k: string) => m.get(k) ?? null, setItem: () => {} });
       try {
         const s = load();
+        const direct = decodeDays((mutated as { days?: unknown } | null)?.days);
+        for (const d of direct) renderTouches(d, 10_000);
         for (const d of s.days) renderTouches(d, 10_000);
         L.totalDone(s.days, s.archive);
       } catch (e) { crashes++; if (!first) first = `seed ${n + 1}: ${String(e).slice(0, 90)}`; }
     }
-    console.log(`FUZZ crashes=${crashes}/2000 ${first}`);
+    if (crashes > 0) console.log(`FUZZ crashes=${crashes}/2000 ${first}`);
     expect(crashes, first).toBe(0);
   });
 });

@@ -37,7 +37,7 @@ export default tseslint.config(
     // analytics.ts reads its own `one-thing:events` key and guards it by hand; moving that read into storage.ts is a later step
     ignores: ['src/storage.ts', 'src/decode.ts', 'src/analytics.ts', 'src/**/*.test.ts'],
     rules: {
-      'no-restricted-properties': ['error', { object: 'JSON', property: 'parse', message: 'Parse stored data in src/storage.ts through the decoders in src/decode.ts. Do not call JSON.parse on untrusted data elsewhere.' }],
+      'no-restricted-properties': ['error', { object: 'JSON', property: 'parse', message: 'Parse stored data in src/storage.ts through the decoders in src/decode.ts. Do not call JSON.parse elsewhere in src.' }],
     },
   },
 )

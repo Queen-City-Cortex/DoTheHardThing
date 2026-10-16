@@ -28,7 +28,7 @@ export function migrateV2(raw: unknown): Store {
   if (!isObj(raw) || !Array.isArray(raw.days)) return empty();
   const days = readDays(raw.days).map((d) => {
     const didIt = d.gotBlock === true ? true : null;
-    const item = didIt && Array.isArray(d.items) ? d.items.find((i) => i.id === d.chosenId) : undefined;
+    const item = didIt ? d.items.find((i) => i.id === d.chosenId) : undefined;
     return { ...d, didIt, doneText: item ? item.text : null };
   });
   return { reminder: readReminder(raw.reminder), ...trimDays(days, {}) };

@@ -32,4 +32,19 @@ describe('decodeDays', () => {
   it('clears a chosen id that no longer names an item', () => {
     expect(decodeDays([{ ...day, chosenId: 'zzz' }])[0].chosenId).toBeNull();
   });
+  it('coerces off-shape values the way the PR describes', () => {
+    const [d] = decodeDays([{ ...day, closed: 1, gotBlock: 'yes', didIt: 'no', doneText: 7, block: { ...block, endedAt: null, endReason: 'stopped', pausedMs: -5, drifts: [1, 'x', null], breaks: 'one' }, items: [{ ...item, pushedCount: -2.5, satisfied: 'y' }, { ...item, id: 'c', pushedCount: 2.7 }] }]);
+    expect(d.closed).toBe(false); // exactly true or not closed
+    expect(d.gotBlock).toBeNull(); expect(d.didIt).toBeNull(); expect(d.doneText).toBeNull();
+    expect(d.block).toMatchObject({ endedAt: null, endReason: null, pausedMs: 0, drifts: [1] });
+    expect(d.block).not.toHaveProperty('breaks');
+    expect(d.items.map((i) => i.pushedCount)).toEqual([0, 2]);
+    expect(d.items[0].satisfied).toBeNull();
+  });
+  it('does not carry unknown keys through', () => {
+    const [d] = decodeDays([{ ...day, future: 1, items: [{ ...item, future: 2 }], block: { ...block, future: 3 } }]);
+    expect(d).not.toHaveProperty('future');
+    expect(d.items[0]).not.toHaveProperty('future');
+    expect(d.block).not.toHaveProperty('future');
+  });
 });

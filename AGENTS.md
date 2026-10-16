@@ -31,7 +31,7 @@ The journey commands serve `dist/` on `VDT_PORT` (default 4317). Other agents sh
 | A live journey run never adds to the real counts (`/api/event` answered locally off `http://127.*`) | `session()` in `e2e/drive.mjs` | `VDT_URL=https://dothehardthing.app node e2e/drive.mjs <name>` |
 | Live verification is read-only: GET only, never POST `/api/event` | `scripts/verify-live.mjs` | `npm run verify:live` |
 | "It is live" means the live entry script equals `dist/index.html`, `/api/event` answers 405, og-image and sw.js bytes equal this build | `scripts/verify-live.mjs` | `npm run build && npm run verify:live -- --retries 4` |
-| Stored data is decoded, never trusted: parse stored JSON only in `src/storage.ts`, through `src/decode.ts` (`src/analytics.ts` reads its own key and is exempt until it moves) | `eslint.config.js` (`JSON.parse` restricted), `src/storage.corrupt.test.ts`, `src/storage.fuzz.test.ts`, `src/decode.test.ts` | `npm run check:fast` |
+| Stored data is decoded, never trusted: parse stored JSON only in `src/storage.ts`, through `src/decode.ts` (tests are exempt; `src/analytics.ts` reads its own key and is exempt until it moves) | `eslint.config.js` (`JSON.parse` restricted), `src/storage.corrupt.test.ts`, `src/storage.fuzz.test.ts`, `src/decode.test.ts` | `npm run check:fast` |
 | Never rename the `one-thing:*` storage keys; v2 is read, never written or deleted | `src/storage.test.ts`, journey `migrate-v2` | `npm test`, `npm run journeys -- migrate-v2` |
 | Text meets WCAG AA contrast in light and dark | `src/contrast.test.ts`, journey `contrast-aa` | `npm test`, `npm run journeys -- contrast-aa` |
 | No em dash in the UI | journeys `welcome-v1`, `review-copy`, `first-visit` | `npm run journeys -- welcome-v1 review-copy first-visit` |
