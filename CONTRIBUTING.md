@@ -17,9 +17,10 @@ npm run dev        # http://localhost:5173
 npm run lint
 npm test
 npm run build
+npm run check:dist   # needs the build above
 ```
 
-CI runs the same three commands on Node 22. A pull request should pass all of them.
+CI runs the same four commands on Node 22. A pull request should pass all of them.
 
 Merging to `master` deploys the live site automatically once CI passes (see [Automatic deploy](./README.md#automatic-deploy) for the required secrets and how to roll back). Only maintainers merge. Contributors never need Cloudflare credentials: pull requests and forks only run the checks.
 

@@ -21,7 +21,11 @@ export default defineConfig(({ mode }) => ({
     cfBeacon(loadEnv(mode, '.', 'VITE_').VITE_CF_ANALYTICS_TOKEN?.trim() ?? ''),
     VitePWA({
       registerType: 'autoUpdate',
-      workbox: { navigateFallbackDenylist: [/^\/api\//] }, // /api/event goes to the Worker, never to the cached app shell
+      workbox: {
+        // explicit, not the default js/css/html: the self-hosted fonts must be precached or they fail offline (`npm run check:dist`)
+        globPatterns: ['**/*.{js,css,html,woff2}'],
+        navigateFallbackDenylist: [/^\/api\//], // /api/event goes to the Worker, never to the cached app shell
+      },
       includeAssets: ['apple-touch-icon.png', 'favicon.svg'],
       manifest: {
         name: 'Do The Hard Thing',
@@ -41,5 +45,5 @@ export default defineConfig(({ mode }) => ({
     }),
   ],
   preview: { allowedHosts: true, host: '127.0.0.1', port: 4173 },
-  test: { include: ['src/**/*.test.ts', 'worker/**/*.test.ts'], css: { include: [/index\.css/] } }, // contrast.test.ts reads the stylesheet as text
+  test: { include: ['src/**/*.test.ts', 'worker/**/*.test.ts', 'scripts/**/*.test.mjs'], css: { include: [/index\.css/] } }, // contrast.test.ts reads the stylesheet as text
 }));

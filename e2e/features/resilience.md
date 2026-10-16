@@ -4,7 +4,7 @@ The app is offline-first and keeps everything on the device, so it has to cope w
 
 ## Sub-features
 
-- `rs-offline` after one online visit the service worker has precached the app shell (`sw.js`, 16 files) and controls the page (the second load, not the first). With the network off, a reload shows the app, a whole day can be worked, a running block survives an offline reload (the timer is recomputed from stored timestamps), and the closed day survives another offline reload.
+- `rs-offline` after one online visit the service worker has precached the app shell (`sw.js`, 12 entries including the 3 self-hosted fonts; `npm run check:dist` fails if a file the page loads is missing from the list) and controls the page (the second load, not the first). With the network off, a reload shows the app, a whole day can be worked, a running block survives an offline reload (the timer is recomputed from stored timestamps), and the closed day survives another offline reload.
 - `rs-small-phone` at 375×667 with touch emulation (iPhone SE class) a whole day, including a long item that wraps over several lines, never scrolls sideways, and Close today is reachable (the page scrolls; the action is not pinned off-screen).
 - `rs-reload-mid-naming` the app keeps no step memory. A reload during the Name steps returns to Welcome; `I'm ready` opens step 1 with the items already added still listed. An unadded draft is lost. (By design; reported as a rough edge for iPhone, which discards home-screen apps.)
 - `rs-storage-blocked` when `localStorage.setItem` throws (private mode, full storage) the muted note `Progress will not be saved on this device.` shows; nothing throws, and the day can still be worked in memory.
