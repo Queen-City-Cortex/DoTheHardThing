@@ -37,6 +37,22 @@ describe('check:agents-md', () => {
     expect(r.stderr).toContain('cites `src/nothing.test.ts`, which does not exist');
     expect(r.stderr).toContain('cites `storage.ts`, which does not exist');
   });
+  it('fails on a missing file under docs/ or public/, in parentheses or before a colon', () => {
+    const r = check(['| x | `docs/nothing.md`, `public/nothing.png` | `(e2e/nothing.mjs)`, `e2e/missing.mjs:` |']);
+    expect(r.status).toBe(1);
+    for (const p of ['docs/nothing.md', 'public/nothing.png', 'e2e/nothing.mjs', 'e2e/missing.mjs']) expect(r.stderr).toContain(`cites \`${p}\`, which does not exist`);
+  });
+  it('accepts an existing path in parentheses or before a colon', () => {
+    const r = check(['| ok | `(e2e/run.mjs)`, `scripts/check.mjs:` | `npm run check` |']);
+    expect(r.stderr).toBe('');
+    expect(r.status).toBe(0);
+  });
+  it('fails on an unknown journey in the prose form "the `name` journey"', () => {
+    const r = check(['| x | the `no-such-journey` journey, the `first-visit` journey | `npm test` |']);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('names journey `no-such-journey`');
+    expect(r.stderr).not.toContain('`first-visit`');
+  });
   it('fails on an unknown journey, in prose or after npm run journeys --', () => {
     const r = check(['| x | journeys `first-visit`, `no-such-journey` | `npm run journeys -- close-day other-missing` |']);
     expect(r.status).toBe(1);

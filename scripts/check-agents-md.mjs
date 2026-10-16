@@ -13,8 +13,10 @@ const problems = new Set();
 const codes = [...md.matchAll(/`([^`]+)`/g)].map((m) => m[1]);
 const journey = (n) => { if (!journeys.has(n)) problems.add(`${file} names journey \`${n}\`, which is not in e2e/drive.mjs: fix the row`); };
 for (const c of codes) {
-  for (const f of c.match(/(?:^|\s)((?:src|e2e|scripts|worker|\.github)\/[\w./*-]+|[\w.-]+\.(?:md|json|jsonc|js|mjs|ts))(?=\s|$)/g) ?? []) {
-    const p = f.trim();
+  // every word of the span, without wrapping parentheses or a trailing `:` or `,`, that looks like a repo path
+  for (const w of c.split(/\s+/)) {
+    const p = w.replace(/^\(+/, '').replace(/[):,]+$/, '');
+    if (!/^(?:(?:src|e2e|scripts|worker|docs|public|\.github)\/[\w./*-]+|[\w.-]+\.(?:md|json|jsonc|js|mjs|ts|yml))$/.test(p)) continue;
     if (!p.includes('*') && !existsSync(p)) problems.add(`${file} cites \`${p}\`, which does not exist: fix the path or drop the row`);
   }
   for (const m of c.matchAll(/npm run ([\w:-]+)/g)) if (!scripts[m[1]]) problems.add(`${file} runs \`npm run ${m[1]}\`, which is not a package.json script: add it or fix the row`);
@@ -22,5 +24,6 @@ for (const c of codes) {
   if (j) for (const n of j[1].split(/\s+/)) journey(n);
 }
 for (const m of md.matchAll(/journeys? ((?:`[\w-]+`(?:, | and )?)+)/g)) for (const n of m[1].match(/[\w-]+/g)) journey(n);
+for (const m of md.matchAll(/`([\w-]+)` journey\b/g)) journey(m[1]); // the prose form: the `name` journey
 if (problems.size) { for (const p of problems) console.error(`check:agents-md FAIL: ${p}`); process.exit(1); }
 console.log(`check:agents-md OK: ${codes.length} code spans, every cited file, script and journey exists`);

@@ -16,8 +16,8 @@ const WAIT_MS = 15_000;
 const sha = (buf) => createHash('sha256').update(buf).digest('hex').slice(0, 16);
 const SECURITY_HEADERS = ['strict-transport-security', 'x-content-type-options', 'referrer-policy', 'content-security-policy', 'permissions-policy', 'x-frame-options'];
 
-async function get(path, method = 'GET') {
-  const res = await fetch(SITE + path, { method, redirect: 'manual', headers: { 'user-agent': 'verify-live (read-only)', 'cache-control': 'no-cache' } });
+async function get(path) { // GET only: no method parameter, so no call can POST
+  const res = await fetch(SITE + path, { redirect: 'manual', headers: { 'user-agent': 'verify-live (read-only)', 'cache-control': 'no-cache' } });
   return { res, body: Buffer.from(await res.arrayBuffer()) };
 }
 

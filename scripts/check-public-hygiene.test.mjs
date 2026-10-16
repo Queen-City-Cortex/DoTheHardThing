@@ -40,6 +40,37 @@ describe('check:public-hygiene', () => {
     expect(r.stderr).toContain('docs/notes.md:1:9  [owner-name] "Hoffman"');
     expect(r.stderr).toContain('docs/notes.md:2:1  [owner-name] "Jeff"');
   });
+  it('flags the owner name in any case and spelling', () => {
+    const r = scan({ 'docs/notes.md': 'Jeffrey Hoffman\nJEFF HOFFMAN\njeff\n' });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('docs/notes.md:1:1  [owner-name] "Jeffrey"');
+    expect(r.stderr).toContain('docs/notes.md:2:1  [owner-name] "JEFF"');
+    expect(r.stderr).toContain('docs/notes.md:2:6  [owner-name] "HOFFMAN"');
+    expect(r.stderr).toContain('docs/notes.md:3:1  [owner-name] "jeff"');
+  });
+  it('flags agent and tool names in any case, Cursor only capitalized', () => {
+    const r = scan({
+      'docs/notes.md': 'codex notes\nGemini, Devin, Aider, Cline, Windsurf\nCursor rules\n',
+      'src/app.css': 'button{cursor:pointer}\n',
+    });
+    expect(r.status).toBe(1);
+    for (const t of ['1:1  [agent-names] "codex"', '2:1  [agent-names] "Gemini"', '2:9  [agent-names] "Devin"', '2:16  [agent-names] "Aider"',
+      '2:23  [agent-names] "Cline"', '2:30  [agent-names] "Windsurf"', '3:1  [agent-names] "Cursor"']) expect(r.stderr).toContain(`docs/notes.md:${t}`);
+    expect(r.stderr).not.toContain('src/app.css');
+  });
+  it('flags a rule match in a file path, but not AGENTS.md or .cursor/skills/', () => {
+    const r = scan({
+      'CLAUDE.md': 'Rules.\n',
+      '.claude/settings.json': '{}\n',
+      'AGENTS.md': 'Rules.\n',
+      '.cursor/skills/verify/SKILL.md': 'Verify.\n',
+    });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('CLAUDE.md:0:1  [agent-names] "CLAUDE"');
+    expect(r.stderr).toContain('.claude/settings.json:0:2  [agent-names] "claude"');
+    expect(r.stderr).not.toContain('AGENTS.md');
+    expect(r.stderr).not.toContain('.cursor/');
+  });
   it('allows the author line in README.md but not another README line', () => {
     const r = scan({ 'README.md': `${AUTHORS['README.md']}\nThanks to Jeffery Hoffman at Queen City Cortex.\n` });
     expect(r.status).toBe(1);
@@ -52,6 +83,17 @@ describe('check:public-hygiene', () => {
     expect(r.status).toBe(1);
     expect(r.stderr).toContain('scripts/x.mjs:1:12  [abs-path] "/workspace/notes/transcript.txt"');
     expect(r.stderr).toContain('scripts/x.mjs:2:12  [abs-path] "/home/box/.cache/chrome"');
+  });
+  it('flags a bare machine directory and the other system roots', () => {
+    const r = scan({ 'docs/run.md': 'cd /home/box\nopen /Users/x\nls /workspace\n/mnt/data /opt/tool /srv/site /var/lib/app\n' });
+    expect(r.status).toBe(1);
+    for (const t of ['1:4  [abs-path] "/home/box"', '2:6  [abs-path] "/Users/x"', '3:4  [abs-path] "/workspace"', '4:1  [abs-path] "/mnt/data"',
+      '4:11  [abs-path] "/opt/tool"', '4:21  [abs-path] "/srv/site"', '4:31  [abs-path] "/var/lib/app"']) expect(r.stderr).toContain(`docs/run.md:${t}`);
+  });
+  it('does not flag a URL path or a relative path', () => {
+    const r = scan({ 'docs/run.md': 'https://example.com/home/box and ./opt/tool and src/root/x\n' });
+    expect(r.stderr).toBe('');
+    expect(r.status).toBe(0);
   });
   it('flags a private repo name', () => {
     const r = scan({ 'e2e/README.md': 'Copied from proto-history and git@github.com:Queen-City-Cortex/do-the-hard-thing.git\n' });

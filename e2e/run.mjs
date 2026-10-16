@@ -6,13 +6,16 @@
 //   --workers N  parallel children (default: half the CPUs, at least 1)
 //   --fast       only FAST, the per-PR subset below; with no names and no --fast, every journey in drive.mjs
 //   --serve      start `vite preview` of the existing dist/ on VDT_PORT (default 4317, --strictPort) and stop it
-//                afterwards; refuses when dist/ is older than src/, index.html, public/ or vite.config.ts
+//                afterwards, however the run ends; refuses when dist/ is older than src/, index.html, public/ or
+//                vite.config.ts, or when the port is already taken (another agent's server)
 //   otherwise VDT_URL must point at a running preview (`VDT_PORT=<your port> e2e/vdt launch` prints it)
-// A journey that runs longer than VDT_JOURNEY_TIMEOUT_MS (default 120000) is killed and counts as a FAIL (timeout).
+// A journey that runs longer than VDT_JOURNEY_TIMEOUT_MS (default 120000) gets SIGTERM (so it can still write its
+// failure evidence), SIGKILL 5 s later, and counts as a FAIL (timeout).
 // Prints one PASS/FAIL line per journey with its evidence dir and seconds, then a summary; exit 0 only if all pass.
 import { spawn, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
+import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -46,12 +49,13 @@ if (unknown.length) { console.error(`unknown journey(s): ${unknown.join(', ')}; 
 // the preview and every drive.mjs child run in their own process group (detached), so a kill reaches their Chromium too
 const running = new Set();
 let preview = null;
-const killGroup = (child) => { try { process.kill(-child.pid, 'SIGKILL'); } catch { /* already gone */ } };
+const killGroup = (child, sig = 'SIGKILL') => { try { process.kill(-child.pid, sig); } catch { /* already gone */ } };
 const stop = () => {
   for (const c of running) killGroup(c);
   running.clear();
   if (preview) { killGroup(preview); preview = null; }
 };
+process.on('exit', stop); // also covers process.exit() and an uncaught throw, so the preview never outlives the run
 process.on('SIGINT', () => { stop(); process.exit(130); });
 process.on('SIGTERM', () => { stop(); process.exit(143); });
 
@@ -63,21 +67,33 @@ if (serve) {
   const src = Math.max(...['src', 'index.html', 'public', 'vite.config.ts'].map((p) => newest(path.join(REPO, p))));
   if (built < src) { console.error('dist/ is missing or older than src/, index.html, public/ or vite.config.ts: run `npm run build` first (the journeys drive dist/, not src/)'); process.exit(2); }
   url = `http://127.0.0.1:${PORT}`;
-  preview = spawn(process.execPath, [path.join(REPO, 'node_modules/vite/bin/vite.js'), 'preview', '--host', '127.0.0.1', '--port', PORT, '--strictPort'], { cwd: REPO, stdio: ['ignore', 'ignore', 'pipe'], detached: true });
-  let err = ''; preview.stderr.on('data', (d) => { err += d; });
-  let up = false;
-  for (let i = 0; i < 60 && !up; i++) {
-    await new Promise((r) => setTimeout(r, 250));
-    if (preview.exitCode != null) break;
-    up = await fetch(url + '/').then(async (r) => (await r.text()).includes('<div id="root">')).catch(() => false);
-  }
-  if (!up) { console.error(`vite preview did not serve ${url} (port busy? set VDT_PORT to a port of your own): ${err.trim()}`); stop(); process.exit(2); }
+  // probe the port first: if another server holds it, the URL would answer with someone else's dist/
+  const free = await new Promise((resolve) => {
+    const srv = net.createServer().once('error', () => resolve(false)).once('listening', () => srv.close(() => resolve(true)));
+    srv.listen(Number(PORT), '127.0.0.1');
+  });
+  if (!free) { console.error(`port ${PORT} is already in use (another agent's server?): set VDT_PORT to a free port of your own, e.g. VDT_PORT=$((4400 + RANDOM % 500))`); process.exit(2); }
+  preview = spawn(process.execPath, [path.join(REPO, 'node_modules/vite/bin/vite.js'), 'preview', '--host', '127.0.0.1', '--port', PORT, '--strictPort'], { cwd: REPO, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+  let log = ''; preview.stderr.on('data', (d) => { log += d; });
+  // ready when this preview prints its own `Local: http://127.0.0.1:<port>/` line, not when something answers the URL
+  const up = await new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(false), 15000);
+    preview.stdout.on('data', (d) => {
+      log += d;
+      // eslint-disable-next-line no-control-regex
+      if (log.replace(/\x1b\[[0-9;]*m/g, '').includes(`Local:   ${url}/`)) { clearTimeout(timer); resolve(true); }
+    });
+    preview.once('exit', () => { clearTimeout(timer); resolve(false); });
+  });
+  if (!up) { console.error(`vite preview did not start on ${url}: ${log.trim()}`); process.exit(2); }
 }
 if (!url) { console.error('set VDT_URL (`VDT_PORT=<your port> e2e/vdt launch` prints it) or pass --serve'); process.exit(2); }
 
 // slowest first, from the last run's timings when there are any, so the long journeys do not end up last
 const TIMES = path.join(process.env.VDT_EVIDENCE ?? path.join(os.tmpdir(), 'do-the-hard-thing-e2e'), 'last-times.json');
-const prev = fs.existsSync(TIMES) ? JSON.parse(fs.readFileSync(TIMES, 'utf8')) : {};
+// the file is shared by every run on the machine: a missing or corrupt one only loses the ordering
+let prev = {};
+try { prev = JSON.parse(fs.readFileSync(TIMES, 'utf8')) ?? {}; } catch { /* no timings yet, or a torn write */ }
 const queue = [...names].sort((a, b) => (prev[b] ?? 0) - (prev[a] ?? 0));
 const run = process.env.VDT_RUN_ID ?? new Date().toISOString().replace(/[:.]/g, '-');
 const results = [];
@@ -89,25 +105,31 @@ function one(name) {
     const child = spawn(process.execPath, [path.join(HERE, 'drive.mjs'), name], { cwd: REPO, env: { ...process.env, VDT_URL: url, VDT_RUN_ID: run }, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
     running.add(child);
     let timedOut = false;
-    const timer = setTimeout(() => { timedOut = true; killGroup(child); }, TIMEOUT_MS);
+    let hard;
+    const timer = setTimeout(() => { timedOut = true; killGroup(child, 'SIGTERM'); hard = setTimeout(() => killGroup(child), 5000); }, TIMEOUT_MS);
     child.stdout.on('data', (d) => { out += d; }); child.stderr.on('data', (d) => { out += d; });
     child.on('close', (code) => {
-      clearTimeout(timer); running.delete(child);
+      clearTimeout(timer); clearTimeout(hard); running.delete(child);
       const s = (Date.now() - start) / 1000;
-      if (timedOut) out += `\nFAIL ${name} timeout: killed after ${TIMEOUT_MS} ms (VDT_JOURNEY_TIMEOUT_MS)`;
+      if (timedOut) out += `\nFAIL ${name} timeout: stopped after ${TIMEOUT_MS} ms (VDT_JOURNEY_TIMEOUT_MS)`;
       results.push({ name, ok: code === 0 && !timedOut, timedOut, s, out: out.trim() });
       console.log(`${out.trim()}  (${s.toFixed(1)}s)`);
       resolve();
     });
   });
 }
-await Promise.all(Array.from({ length: Math.min(workers, queue.length) }, async () => { while (queue.length) await one(queue.shift()); }));
-stop();
+try {
+  await Promise.all(Array.from({ length: Math.min(workers, queue.length) }, async () => { while (queue.length) await one(queue.shift()); }));
+} finally {
+  stop();
+}
 
 const wall = (Date.now() - t0) / 1000;
 const failed = results.filter((r) => !r.ok);
 fs.mkdirSync(path.dirname(TIMES), { recursive: true });
-fs.writeFileSync(TIMES, JSON.stringify({ ...prev, ...Object.fromEntries(results.map((r) => [r.name, r.s])) }, null, 2));
+const tmp = `${TIMES}.${process.pid}.tmp`; // write then rename, so a parallel run never reads half a file
+fs.writeFileSync(tmp, JSON.stringify({ ...prev, ...Object.fromEntries(results.map((r) => [r.name, r.s])) }, null, 2));
+fs.renameSync(tmp, TIMES);
 if (jsonOut) fs.writeFileSync(jsonOut, JSON.stringify({ workers, wall, run, results }, null, 2));
 const sum = results.reduce((a, r) => a + r.s, 0);
 console.log(`${failed.length ? 'FAIL' : 'PASS'} ${results.length - failed.length}/${results.length} journeys, ${workers} worker(s), wall ${wall.toFixed(1)}s, sum of journeys ${sum.toFixed(1)}s, run id ${run}`);

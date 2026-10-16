@@ -7,7 +7,7 @@ The harness is `e2e/vdt` (bash) plus `e2e/drive.mjs` (Playwright journeys). It u
 ## Launch
 
 ```bash
-export VDT_PORT=4400   # a port of your own, the same for every command
+export VDT_PORT=$((4400 + RANDOM % 500))   # any free port above 4400 of your own, the same for every command
 e2e/vdt launch
 ```
 
@@ -71,7 +71,7 @@ Proof standards:
 ## Cleanup
 
 ```bash
-VDT_PORT=4400 e2e/vdt cleanup   # the port you launched on
+e2e/vdt cleanup   # with the VDT_PORT you launched on
 ```
 
 This kills only the process group in `$TMPDIR/vdt-$PORT.pid` (never by name) and deletes the pid file. Browsers close at the end of each journey. Evidence and `dist/` are left alone. Run cleanup after failed iterations too.
