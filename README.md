@@ -1,5 +1,7 @@
 # Do The Hard Thing
 
+[![CI](https://github.com/Queen-City-Cortex/DoTheHardThing/actions/workflows/ci.yml/badge.svg)](https://github.com/Queen-City-Cortex/DoTheHardThing/actions/workflows/ci.yml)
+
 **Live at [DoTheHardThing.app](https://dothehardthing.app).**
 
 A morning method, as an offline-first PWA: name what you have been avoiding, ask two questions, pick one thing, and protect one unbroken block of two to three hours to do it. No account, no streaks, nothing you write ever leaves your device.
