@@ -1,7 +1,11 @@
 // Anonymous counts, nothing else. Three events, each sent at most once per browser per day, as `{"event":"<name>"}`
 // to this site's own /api/event. No item text, no storage contents, no id and no cookie is ever part of a send.
 // Off in development, off when the browser says Do Not Track (or Global Privacy Control), and silent when offline or blocked.
-export type AppEvent = 'started' | 'finished' | 'opened_history';
+import { now } from './clock';
+import type { AppEvent } from './events';
+import { dayKey } from './logic';
+import { kv, readSmall } from './storage';
+export type { AppEvent };
 
 const KEY = 'one-thing:events'; // { date, sent[] }: only which names went out today, so a refresh does not count twice
 
@@ -22,8 +26,8 @@ export const doNotTrack = (): boolean => {
 const defaults = (): Env => ({
   enabled: import.meta.env.PROD,
   dnt: doNotTrack,
-  today: () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; },
-  storage: localStorage,
+  today: () => dayKey(new Date(now())),
+  storage: kv(),
   send: (body) => { void fetch('/api/event', { method: 'POST', body, keepalive: true, credentials: 'omit', headers: { 'content-type': 'text/plain' } }).catch(() => {}); },
 });
 
@@ -33,8 +37,7 @@ export function track(event: AppEvent, env?: Env): void {
     const e = env ?? defaults();
     if (!e.enabled || e.dnt()) return;
     const date = e.today();
-    let seen: { date?: string; sent?: string[] } = {};
-    try { seen = JSON.parse(e.storage.getItem(KEY) || '{}') as typeof seen; } catch { /* start fresh */ }
+    const seen = readSmall(e.storage, KEY); // unreadable: start fresh
     const sent = seen.date === date && Array.isArray(seen.sent) ? seen.sent : [];
     if (sent.includes(event)) return;
     try { e.storage.setItem(KEY, JSON.stringify({ date, sent: [...sent, event] })); } catch { return; } // cannot remember it: do not send

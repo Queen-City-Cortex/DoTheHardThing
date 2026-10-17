@@ -104,3 +104,45 @@ describe('scheduleReminder', () => {
     expect(vi.getTimerCount()).toBe(1);
   });
 });
+
+// Pick asks for permission just before it starts the block; nothing about the answer may stop the block from starting
+describe('askPermission', () => {
+  it('old Safari: requestPermission throws (callback-only); neither call throws and the answer is re-read', async () => {
+    const { N } = env({ permission: 'default' });
+    const requestPermission = vi.fn(() => { throw new TypeError('Not enough arguments'); });
+    Object.assign(N, { requestPermission });
+    const R = await load();
+    expect(() => R.askPermissionIfUnasked()).not.toThrow();
+    await expect(R.askPermission()).resolves.toBe('default');
+    expect(requestPermission).toHaveBeenCalledTimes(2);
+  });
+  it('old Safari: requestPermission returns undefined instead of a promise; neither call throws', async () => {
+    const { N } = env({ permission: 'default' });
+    const requestPermission = vi.fn(() => undefined);
+    Object.assign(N, { requestPermission });
+    const R = await load();
+    expect(() => R.askPermissionIfUnasked()).not.toThrow();
+    await expect(R.askPermission()).resolves.toBe('default');
+    expect(requestPermission).toHaveBeenCalledTimes(2);
+  });
+  it('a rejected request resolves to the re-read permission', async () => {
+    const { N } = env({ permission: 'denied' });
+    Object.assign(N, { requestPermission: vi.fn(async () => { throw new Error('blocked'); }) });
+    const R = await load();
+    await expect(R.askPermission()).resolves.toBe('denied');
+  });
+  it('does not ask again once answered', async () => {
+    const { N } = env({ permission: 'denied' });
+    const requestPermission = vi.fn(async () => 'denied');
+    Object.assign(N, { requestPermission });
+    const R = await load();
+    R.askPermissionIfUnasked();
+    expect(requestPermission).not.toHaveBeenCalled();
+  });
+  it('no Notification at all: nothing is asked and the permission reads denied', async () => {
+    vi.stubGlobal('window', {});
+    const R = await load();
+    expect(() => R.askPermissionIfUnasked()).not.toThrow();
+    expect(R.readPermission()).toBe('denied');
+  });
+});

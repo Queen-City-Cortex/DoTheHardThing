@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as L from './logic';
 import { load, refresh, save, type Store } from './storage';
 import { track } from './analytics';
-import { cancelReminder, notify, reminderMode, scheduleReminder } from './reminder';
+import { askPermission, askPermissionIfUnasked, cancelReminder, notify, readPermission, reminderMode, scheduleReminder } from './reminder';
+import { now as clockNow, today } from './clock';
 
 type Screen = 'welcome' | 'name' | 'ask' | 'pick' | 'block' | 'close' | 'closed' | 'about' | 'days';
 // About and Your days open over the day's screen and go back to where they were opened from
@@ -28,16 +29,18 @@ function resumeScreen(d: L.Day): Screen {
 }
 // the 120-day window goes through trimDays, so a done day that falls out still counts in the archive
 const putDay = (s: Store, d: L.Day): Store => ({ ...s, ...L.putDay(s, d) });
+// Owner decision pending: logic.ts LATE_HOUR is 11, the Pick screen uses 12. Kept at 12 (current behavior) until decided.
+const PICK_LATE_HOUR = 12;
 const hrs = (m: number) => (m % 60 ? `${(m / 60).toFixed(1).replace(/\.0$/, '')}h` : `${m / 60}h`).replace('1.5h', '1½h').replace('2.5h', '2½h');
 
 export default function App() {
   const [store, setStore] = useState<Store>(() => load());
   // a block belongs to the day it started: an unfinished earlier day stays open until it is closed
-  const [day, setDay] = useState<L.Day>(() => L.activeDay(store.days, Date.now()).day ?? L.newDay(L.dayKey()));
+  const [day, setDay] = useState<L.Day>(() => L.activeDay(store.days, clockNow()).day ?? L.newDay(today(), clockNow()));
   const [screen, setScreen] = useState<Screen>(() => resumeScreen(day));
   // the screens under an open overlay, so Done goes back one step (About -> Your days -> Done -> About)
   const [stack, setStack] = useState<Screen[]>([]);
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(clockNow());
   const history = store.days.filter((d) => d.date < day.date);
   const bad = useMemo(() => L.badDay(history, new Date(day.openedAt)), [store.days.length, day.date, day.openedAt]); // eslint-disable-line react-hooks/exhaustive-deps
   const [small, setSmall] = useState(false);
@@ -46,8 +49,8 @@ export default function App() {
   useEffect(() => { setStore((st) => putDay(st, day)); }, [day]);
   // move to the real today: keep `from` (the finished day) in the store, then open today's record or a new one
   const rollOver = useCallback((from: L.Day) => {
-    const date = L.dayKey();
-    const next = store.days.find((d) => d.date === date) ?? L.newDay(date);
+    const date = today();
+    const next = store.days.find((d) => d.date === date) ?? L.newDay(date, clockNow());
     // save `from` while it is still the open day: after this a merge would prefer the older stored copy
     save(putDay(store, from), from.date);
     setStore((st) => putDay(st, from));
@@ -57,7 +60,7 @@ export default function App() {
   }, [store, screen]);
   // the date can change while the app stays open (left open overnight, or backgrounded)
   useEffect(() => {
-    const check = () => { if (L.shouldRollOver(day, screen, Date.now())) rollOver(day); };
+    const check = () => { if (L.shouldRollOver(day, screen, clockNow())) rollOver(day); };
     const visible = () => { if (document.visibilityState === 'visible') check(); };
     check();
     const i = setInterval(check, 60_000);
@@ -99,7 +102,7 @@ export default function App() {
   // timer: always recomputed from stored timestamps
   useEffect(() => {
     if (screen !== 'block') return;
-    const tick = () => setNow(Date.now());
+    const tick = () => setNow(clockNow());
     const i = setInterval(tick, 1000);
     document.addEventListener('visibilitychange', tick);
     return () => { clearInterval(i); document.removeEventListener('visibilitychange', tick); };
@@ -143,19 +146,19 @@ export default function App() {
         {screen === 'ask' && <Ask items={L.filled(day.items)} setItem={setItem} onBack={() => setScreen('name')} onDone={() => setScreen('pick')} />}
         {screen === 'pick' && (
           <Pick day={day} small={small} upd={upd} onBack={() => setScreen('ask')} onStart={async (min) => {
-            if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission().catch(() => {});
-            const t = Date.now(); setNow(t); upd({ block: L.startBlock(min, t, small), gotBlock: null }); setScreen('block');
+            askPermissionIfUnasked();
+            const t = clockNow(); setNow(t); upd({ block: L.startBlock(min, t, small), gotBlock: null }); setScreen('block');
           }} />
         )}
-        {screen === 'block' && day.block && <BlockView block={day.block} item={chosen} now={now} set={(b) => { const t = Date.now(); setNow(t); setDay((d) => ({ ...d, block: b, gotBlock: L.autoGotBlock(b, t, d.gotBlock) })); }} />}
+        {screen === 'block' && day.block && <BlockView block={day.block} item={chosen} now={now} set={(b) => { const t = clockNow(); setNow(t); setDay((d) => ({ ...d, block: b, gotBlock: L.autoGotBlock(b, t, d.gotBlock) })); }} />}
         {screen === 'close' && <Close didIt={day.didIt} item={chosen} total={total} onDays={() => open('days')}
           onAnswer={(didIt) => { upd({ didIt, doneText: didIt ? chosen?.text ?? null : null }); if (didIt) track('finished'); }} onDone={() => {
             // closing a day carried past midnight moves straight on to the real today
             const closed = { ...day, closed: true };
-            if (L.shouldRollOver(closed, 'closed', Date.now())) rollOver(closed); else { setDay(closed); setScreen('closed'); }
+            if (L.shouldRollOver(closed, 'closed', clockNow())) rollOver(closed); else { setDay(closed); setScreen('closed'); }
           }} />}
         {/* starting over replaces today's record whole; no other day is touched */}
-        {screen === 'closed' && <Closed didIt={day.didIt} onDays={() => open('days')} onStartOver={() => { setDay(L.newDay(L.dayKey())); setSmall(false); setScreen('welcome'); }} />}
+        {screen === 'closed' && <Closed didIt={day.didIt} onDays={() => open('days')} onStartOver={() => { setDay(L.newDay(today(), clockNow())); setSmall(false); setScreen('welcome'); }} />}
         {screen === 'days' && <Days days={counted.days} archive={counted.archive} onBack={back} />}
         {screen === 'about' && <About reminder={store.reminder} total={total} onDays={() => open('days')} setReminder={(r) => setStore((s) => ({ ...s, reminder: r }))} />}
       </main>
@@ -360,7 +363,7 @@ function Ask({ items, setItem, onBack, onDone }: { items: L.Item[]; setItem: (id
 function Pick({ day, small, upd, onBack, onStart }: { day: L.Day; small: boolean; upd: (p: Partial<L.Day>) => void; onBack: () => void; onStart: (min: number) => void }) {
   const list = L.pickOrder(day.items);
   const [min, setMin] = useState(small ? 90 : L.BLOCK_MIN);
-  const late = new Date().getHours() >= 12;
+  const late = new Date(clockNow()).getHours() >= PICK_LATE_HOUR;
   if (!list.length) return (
     <section className="card">
       <h1>Nothing got a yes.</h1>
@@ -412,11 +415,11 @@ function BlockView({ block, item, now, set }: { block: L.Block; item?: L.Item; n
         <p className="muted small">{block.drifts.length ? 'You came back. No need to spiral.' : 'No email, no social. Just this.'}{canPause && ' One short pause if you must, then back.'}</p>
       )}
       <div className="actions">
-        {paused ? <button className="primary big" onClick={() => set(L.resume(block, Date.now()))}>I'm back</button>
-          : <button className="primary big" onClick={() => set(L.drift(block, Date.now()))}>Gently come back to your one to-do</button>}
-        {canPause && <button className="secondary" onClick={() => set(L.pause(block, Date.now()))}>Step away briefly</button>}
+        {paused ? <button className="primary big" onClick={() => set(L.resume(block, clockNow()))}>I'm back</button>
+          : <button className="primary big" onClick={() => set(L.drift(block, clockNow()))}>Gently come back to your one to-do</button>}
+        {canPause && <button className="secondary" onClick={() => set(L.pause(block, clockNow()))}>Step away briefly</button>}
         {!paused && !canPause && <p className="muted small">Your one pause is used.</p>}
-        <button className="link" onClick={() => set(L.stop(block, Date.now()))}>End block</button>
+        <button className="link" onClick={() => set(L.stop(block, clockNow()))}>End block</button>
       </div>
     </section>
   );
@@ -480,7 +483,7 @@ function Closed({ didIt, onDays, onStartOver }: { didIt: boolean | null; onDays:
 // only done days are listed and counted; a missed day leaves no row, and no zero is ever shown
 function Days({ days, archive, onBack }: { days: L.Day[]; archive: L.Archive; onBack: () => void }) {
   const total = L.totalDone(days, archive);
-  const ym = L.dayKey().slice(0, 7);
+  const ym = today().slice(0, 7);
   const entries = L.thisMonthEntries(days, ym);
   const earlier = L.earlierMonths(days, archive, ym);
   // a month from another year says which year
@@ -516,12 +519,6 @@ function Days({ days, archive, onBack }: { days: L.Day[]; archive: L.Archive; on
       <div className="actions"><button className="secondary" onClick={onBack}>Back</button></div>
     </section>
   );
-}
-
-const readPermission = (): L.Permission => ('Notification' in window ? Notification.permission : 'denied');
-async function askPermission(): Promise<L.Permission> {
-  try { await Promise.resolve(Notification.requestPermission()); } catch { /* old Safari or blocked: re-read below */ }
-  return readPermission();
 }
 
 function About({ reminder, total, onDays, setReminder }: { reminder: string | null; total: number; onDays: () => void; setReminder: (r: string | null) => void }) {

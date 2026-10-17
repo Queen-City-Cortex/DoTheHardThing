@@ -28,6 +28,7 @@ Changes that touch what a person sees or does (screens, copy, the block timer, c
 - One concern per pull request, with a short description of what changed and why.
 - Keep the diff small. Do not mix refactors with behavior changes.
 - No new runtime dependencies without a good reason. The app is small on purpose.
+- Read storage, the clock and notifications only through their owner modules (`src/storage.ts`, `src/clock.ts`, `src/reminder.ts`); `npm run lint` names the function to call. See the module map in [docs/architecture.md](./docs/architecture.md#module-map).
 - Do not rename the `localStorage` keys (`one-thing:*`). Existing users' days live there. See [docs/architecture.md](./docs/architecture.md).
 - Never send what a person writes anywhere. Item text stays on the device.
 

@@ -2,8 +2,9 @@
 // Everything else is the static app, served from ./dist by the assets binding (only /api/* reaches this code first).
 // No cookie, no IP, no user agent, no id of any kind is stored: a data point is the event name and a country code.
 
-export const EVENTS = ['started', 'finished', 'opened_history'] as const;
-export type AppEvent = (typeof EVENTS)[number];
+import { EVENTS } from '../src/events';
+export { EVENTS };
+export type { AppEvent } from '../src/events';
 
 interface Env {
   ASSETS: { fetch: (r: Request) => Promise<Response> };

@@ -62,6 +62,13 @@ export function mergeStores(stored: Store, mine: Store, openDate?: string): Stor
 /** Pull in what other tabs have saved, keeping this tab's open day. */
 export const refresh = (mine: Store, openDate: string): Store => mergeStores(load(), mine, openDate);
 
+/** localStorage for a small key owned by another module (analytics' `one-thing:events`). May throw where storage is blocked. */
+export const kv = (): Pick<Storage, 'getItem' | 'setItem'> => localStorage;
+/** A small key's stored JSON as an object, or {} when it is absent, unreadable or storage is blocked. The caller checks each field. */
+export function readSmall(store: Pick<Storage, 'getItem'>, key: string): Record<string, unknown> {
+  try { const v: unknown = JSON.parse(store.getItem(key) || '{}'); return isObj(v) ? v : {}; } catch { return {}; }
+}
+
 /** Never throws: returns false if storage is blocked or full. Merges with the stored copy first so another tab's work survives. */
 export function save(s: Store, openDate?: string): boolean {
   try {

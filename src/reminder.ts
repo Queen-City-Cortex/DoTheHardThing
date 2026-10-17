@@ -1,4 +1,5 @@
-import { nextReminder, type ReminderMode } from './logic';
+import { now } from './clock';
+import { nextReminder, type Permission, type ReminderMode } from './logic';
 const TAG = 'morning';
 const OPTS = { body: 'Make some tea. Email can wait.', icon: '/pwa-192.png', tag: TAG };
 let timer: ReturnType<typeof setTimeout> | undefined;
@@ -32,7 +33,7 @@ function armTimer(hhmm: string, reg: ServiceWorkerRegistration | undefined, g: n
     if (g !== gen) return;
     try { if (reg) await reg.showNotification('Good morning', OPTS); else new Notification('Good morning', OPTS); } catch { /* ignore */ }
     if (g === gen) armTimer(hhmm, reg, g); // tomorrow, without closing the one just shown
-  }, nextReminder(hhmm, new Date()).getTime() - Date.now());
+  }, nextReminder(hhmm, new Date(now())).getTime() - now());
 }
 
 async function run(hhmm: string | null, g: number) {
@@ -44,7 +45,7 @@ async function run(hhmm: string | null, g: number) {
   const Trigger = triggerCtor();
   if (reg && Trigger) {
     // one occurrence; the app re-schedules on every open
-    try { await reg.showNotification('Good morning', { ...OPTS, showTrigger: new Trigger(nextReminder(hhmm, new Date()).getTime()) } as NotificationOptions); return; } catch { /* fall through */ }
+    try { await reg.showNotification('Good morning', { ...OPTS, showTrigger: new Trigger(nextReminder(hhmm, new Date(now())).getTime()) } as NotificationOptions); return; } catch { /* fall through */ }
     if (g !== gen) return;
   }
   armTimer(hhmm, reg, g);
@@ -66,4 +67,16 @@ export async function notify(title: string, body: string) {
     const reg = await navigator.serviceWorker?.getRegistration();
     if (reg) await reg.showNotification(title, { body, icon: '/pwa-192.png' }); else new Notification(title, { body });
   } catch { /* ignore */ }
+}
+
+export const readPermission = (): Permission => ('Notification' in window ? Notification.permission : 'denied');
+/** Ask, then re-read the answer rather than trusting the return value. Never throws or rejects.
+ *  Old Safari: requestPermission only takes a callback and can throw; the block starts regardless. */
+export async function askPermission(): Promise<Permission> {
+  try { await Promise.resolve(Notification.requestPermission()); } catch { /* old Safari or blocked: re-read below */ }
+  return readPermission();
+}
+/** Ask only if the person has not answered yet (Pick, before the first block). Never throws; does not wait for the answer. */
+export function askPermissionIfUnasked(): void {
+  if ('Notification' in window && Notification.permission === 'default') void askPermission();
 }
