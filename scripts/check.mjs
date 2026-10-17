@@ -1,7 +1,7 @@
 // The agent loop: one command that says whether a change is done. Steps run cheapest first and stop at the first
 // failure, which is printed with the command to rerun it alone.
 // Usage: node scripts/check.mjs [fast|default|full]   (npm run check:fast | check | check:full)
-//   fast     public hygiene, AGENTS.md enforcers exist, typecheck, lint, unit tests (no build)
+//   fast     public hygiene, text rules, AGENTS.md enforcers exist, typecheck, lint, unit tests (no build)
 //   default  fast + build + dist check
 //   full     default + every journey against the fresh build (e2e/run.mjs --serve)
 import { spawnSync } from 'node:child_process';
@@ -9,6 +9,7 @@ import { spawnSync } from 'node:child_process';
 const mode = process.argv[2] ?? 'default';
 const FAST = [
   ['check:public-hygiene', 'node scripts/check-public-hygiene.mjs'],
+  ['check:text', 'node scripts/check-text.mjs'],
   ['check:agents-md', 'node scripts/check-agents-md.mjs'],
   ['typecheck', 'tsc -b'],
   ['lint', 'eslint .'],

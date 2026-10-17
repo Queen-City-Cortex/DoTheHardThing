@@ -11,9 +11,10 @@ const script = fileURLToPath(new URL('./check-method-quotes.mjs', import.meta.ur
 const dir = mkdtempSync(join(tmpdir(), 'check-quotes-'));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
-/** Run the script with these arguments, ignoring any TRANSCRIPT set in the caller's environment. */
+/** Run the script with these arguments, ignoring any FERRISS_TRANSCRIPT or TRANSCRIPT set in the caller's environment. */
 function run(args, extra = {}) {
   const env = { ...process.env };
+  delete env.FERRISS_TRANSCRIPT;
   delete env.TRANSCRIPT;
   return spawnSync(process.execPath, [script, ...args], { encoding: 'utf8', env: { ...env, ...extra } });
 }
@@ -32,10 +33,21 @@ describe('check:quotes', () => {
     expect(r.status, r.stderr).toBe(0);
     expect(r.stdout).toMatch(`check:quotes OK: ${Object.values(RULES).filter((x) => x.quote).length} quotes`);
   });
-  it('reads the path from TRANSCRIPT', () => {
-    const r = run([], { TRANSCRIPT: transcript('env.txt') });
-    expect(r.status, r.stderr).toBe(0);
-    expect(r.stdout).toContain('check:quotes OK');
+  it('reads the path from FERRISS_TRANSCRIPT, and from TRANSCRIPT, its older name', () => {
+    for (const name of ['FERRISS_TRANSCRIPT', 'TRANSCRIPT']) {
+      const p = transcript(`env-${name}.txt`);
+      const r = run([], { [name]: p });
+      expect(r.status, r.stderr).toBe(0);
+      expect(r.stdout).toContain(`check:quotes OK: ${Object.values(RULES).filter((x) => x.quote).length} quotes found verbatim on their transcript lines in ${p}`);
+    }
+  });
+  it('takes the argument first, then FERRISS_TRANSCRIPT, then TRANSCRIPT', () => {
+    const good = transcript('good.txt');
+    const bad = transcript('bad.txt', (id, line) => (id === 'three-to-five-items' ? '[4:36] So write down those three to seven things.' : line));
+    expect(run([good], { FERRISS_TRANSCRIPT: bad, TRANSCRIPT: bad }).status).toBe(0);
+    expect(run([], { FERRISS_TRANSCRIPT: good, TRANSCRIPT: bad }).status).toBe(0);
+    expect(run([], { FERRISS_TRANSCRIPT: '', TRANSCRIPT: good }).status).toBe(0); // empty counts as unset
+    expect(run([], { FERRISS_TRANSCRIPT: bad, TRANSCRIPT: good }).status).toBe(1);
   });
   it('fails with the rule id, ref and the actual line when a quote drifts', () => {
     const p = transcript('drift.txt', (id, line) => (id === 'three-to-five-items' ? '[4:36] So write down those three to seven things.' : line));
@@ -52,7 +64,7 @@ describe('check:quotes', () => {
   it('skips with exit 0 when there is no transcript', () => {
     for (const r of [run([]), run([join(dir, 'missing.txt')])]) {
       expect(r.status).toBe(0);
-      expect(r.stdout.trim()).toBe('check:quotes skipped: no transcript (pass a path or set TRANSCRIPT)');
+      expect(r.stdout.trim()).toBe('check:quotes skipped: no transcript (pass a path or set FERRISS_TRANSCRIPT)');
     }
   });
 });

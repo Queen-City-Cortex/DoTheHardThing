@@ -49,12 +49,13 @@ const OWNER_IMPORTS = {
   'src/reminder.ts': ['./logic', './clock'],
   'src/analytics.ts': ['./logic', './clock', './storage', './events'],
 }
-// Pure modules touch no platform API and import only what is listed here (the method's numbers, for logic.ts): they take
-// every other value as an argument.
+// Pure modules touch no platform API and import only what is listed here (the method's numbers and the screen copy, for
+// logic.ts): they take every other value as an argument.
 const PURE = {
-  'src/logic.ts': ['./method'],
+  'src/logic.ts': ['./method', './copy'],
   'src/events.ts': [],
   'src/method.ts': [],
+  'src/copy.ts': [],
 }
 const pureMessage = (file) => `${file} is pure: ${PURE[file].length ? `it may import only ${PURE[file].join(', ')}` : 'no imports'} and no DOM. Take the value as an argument; the caller gets it from now()/today() in src/clock.ts, load() in src/storage.ts or readPermission() in src/reminder.ts.`
 // The method's numbers have one home, src/method.ts. These selectors apply to every src file except method.ts (tests are
@@ -72,6 +73,23 @@ const METHOD_SYNTAX = [
   // minutes written as milliseconds, e.g. 10 * 60_000 or 60000 * 10
   { selector: "BinaryExpression[operator='*']:matches([left.type='Literal'][right.raw=/^60_?000$/], [right.type='Literal'][left.raw=/^60_?000$/])", message: RULE_NUMBER },
 ]
+// Screens whose words live in src/copy.ts, by file and function name. Inside these function declarations, text of four or
+// more words written inline (JSX text, a string literal, a template literal part) is copy that went around the module and
+// its transcript checks. A screen joins the table once its strings have moved. Out of scope, so not caught: module-level
+// constants outside the functions, strings of one to three words ('Start', 'Not today'), screens written as arrow
+// functions or moved to another file, and the screens not listed yet (Name, Ask, BlockView, Days, About), which move next.
+// scripts/boundaries.test.mjs fails when a listed function is no longer declared in its file, so a rename or a move
+// cannot drop a screen from the rule without a test saying so.
+export const COPY_SCREENS = {
+  'src/App.tsx': ['FirstWelcome', 'Welcome', 'Pick', 'Close', 'Closed'],
+}
+const MOVE_TEXT = "Move this text to src/copy.ts and render it with t(id); a talk quote needs kind: 'quote' and its transcript timestamp as ref."
+const FOUR_WORDS = '/\\S+\\s+\\S+\\s+\\S+\\s+\\S+/'
+const copySyntax = (screens) => {
+  const inScreen = `FunctionDeclaration[id.name=/^(${screens.join('|')})$/]`
+  return [`JSXText[value=${FOUR_WORDS}]`, `Literal[value=${FOUR_WORDS}]`, `TemplateElement[value.raw=${FOUR_WORDS}]`]
+    .map((node) => ({ selector: `${inScreen} ${node}`, message: MOVE_TEXT }))
+}
 const UI_ONLY = { group: ['react', 'react-dom', 'react-dom/*', './App', './main'], message: 'Only .tsx files are UI. Keep React and App out of .ts modules: export a plain function and call it from App.tsx.' }
 const TESTS = ['**/*.test.ts', '**/*.test.tsx']
 
@@ -93,11 +111,12 @@ function boundaries({ file, ui = false } = {}) {
   return {
     'no-restricted-globals': ['error', ...globals],
     'no-restricted-properties': ['error', ...properties],
-    'no-restricted-syntax': ['error', ...bans.flatMap((o) => o.syntax.map((selector) => ({ selector, message: o.message }))), ...(file === 'src/method.ts' ? [] : METHOD_SYNTAX)],
+    'no-restricted-syntax': ['error', ...bans.flatMap((o) => o.syntax.map((selector) => ({ selector, message: o.message }))), ...(file === 'src/method.ts' ? [] : METHOD_SYNTAX),
+      ...(COPY_SCREENS[file] ? copySyntax(COPY_SCREENS[file]) : [])],
     'no-restricted-imports': ['error', { patterns: imports }],
   }
 }
-const special = [...new Set([...Object.values(OWNERS).map((o) => o.file), ...Object.keys(OWNER_IMPORTS), ...Object.keys(PURE)])]
+const special = [...new Set([...Object.values(OWNERS).map((o) => o.file), ...Object.keys(OWNER_IMPORTS), ...Object.keys(PURE), ...Object.keys(COPY_SCREENS)])]
 
 export default tseslint.config(
   { ignores: ['dist'] },
@@ -123,12 +142,12 @@ export default tseslint.config(
   {
     // the check scripts and the journey runner run in Node (older scripts and journeys evaluate browser code inside page.evaluate and are not linted yet)
     extends: [js.configs.recommended],
-    files: ['scripts/check*.mjs', 'scripts/verify-live.mjs', 'scripts/**/*.test.mjs', 'e2e/run.mjs'],
+    files: ['scripts/check*.mjs', 'scripts/transcript.mjs', 'scripts/verify-live.mjs', 'scripts/**/*.test.mjs', 'e2e/run.mjs'],
     languageOptions: { ecmaVersion: 2023, sourceType: 'module', globals: globals.node },
   },
   { files: ['src/**/*.tsx'], ignores: TESTS, rules: boundaries({ ui: true }) },
   { files: ['src/**/*.ts'], ignores: [...TESTS, ...special], rules: boundaries() },
-  ...special.map((file) => ({ files: [file], rules: boundaries({ file }) })),
+  ...special.map((file) => ({ files: [file], rules: boundaries({ file, ui: file.endsWith('.tsx') }) })),
   {
     // the worker shares only the event list with the app; tsconfig.worker.json typechecks the same pair
     files: ['worker/**/*.ts'],

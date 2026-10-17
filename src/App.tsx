@@ -5,13 +5,12 @@ import { track } from './analytics';
 import { askPermission, askPermissionIfUnasked, cancelReminder, notify, readPermission, reminderMode, scheduleReminder } from './reminder';
 import { now as clockNow, isLate, today } from './clock';
 import { BLOCK_CHOICES, BLOCK_MIN, BREAK_LIMIT_MIN, SMALL_BLOCK_DEFAULT } from './method';
+import { BRAND, TALK_URL, fmt, t } from './copy';
 
 type Screen = 'welcome' | 'name' | 'ask' | 'pick' | 'block' | 'close' | 'closed' | 'about' | 'days';
 // About and Your days open over the day's screen and go back to where they were opened from
 const overlay = (s: Screen) => s === 'about' || s === 'days';
 const uid = () => Math.random().toString(36).slice(2, 10);
-const X_POST = 'https://x.com/tferriss/status/2110445158206447830';
-const TALK = 'Watch his short talk'; // one name for the link, wherever it appears
 // shown on About, one paragraph each: what stays on the device, what is counted (src/analytics.ts, worker/index.ts), Do Not Track, and the host's own visit count
 const PRIVACY = [
   'What you write stays on this device and is never sent anywhere.',
@@ -19,8 +18,6 @@ const PRIVACY = [
   'If your browser\u2019s Do Not Track setting is on, we keep no tallies at all.',
   'Our host, Cloudflare, counts page visits without cookies.',
 ];
-// quoted from the talk, word for word
-const GUISE = 'Being busy is most often used as a guise for avoiding the few critically important but uncomfortable actions you need to take.';
 
 function resumeScreen(d: L.Day): Screen {
   if (d.closed) return 'closed';
@@ -136,7 +133,7 @@ export default function App() {
   return (
     <div className="app">
       <header className="top">
-        <span className="brand">Do The Hard Thing</span>
+        <span className="brand">{BRAND}</span>
         {overlay(screen) ? <button className="link" onClick={back}>Done</button> : <button className="link" onClick={() => open('about')}>About</button>}
       </header>
       <main className="main">
@@ -172,53 +169,49 @@ function Steps({ n, at }: { n: number; at: number }) {
 }
 
 // the first-ever visit: the whole method on one screen. Returning variants below are unchanged.
-const HOW = [
-  ['Name what you\u2019re avoiding', 'Write it plainly: three to five, no more.'],
-  ['Pick one thing', 'The one that matters most today.'],
-  ['Protect one block', 'At least two to three hours, unbroken.'],
-];
+const HOW = [['first.step1', 'first.step1.d'], ['first.step2', 'first.step2.d'], ['first.step3', 'first.step3.d']] as const;
 function FirstWelcome({ onStart }: { onStart: () => void }) {
   return (
     <section className="card welcome">
-      <p className="eyebrow">Welcome</p>
-      <h1 className="hero promise">Each morning, do the one hard thing you&rsquo;ve been avoiding.</h1>
+      <p className="eyebrow">{t('first.eyebrow')}</p>
+      <h1 className="hero promise">{t('first.hero')}</h1>
       <ol className="how">
-        {HOW.map(([t, d], i) => <li key={t}><span className="n" aria-hidden="true">{i + 1}</span><div><b>{t}</b><span className="d">{d}</span></div></li>)}
+        {HOW.map(([s, d], i) => <li key={t(s)}><span className="n" aria-hidden="true">{i + 1}</span><div><b>{t(s)}</b><span className="d">{t(d)}</span></div></li>)}
       </ol>
-      <p className="src">Built from Tim Ferriss&rsquo;s morning method.<br /><a href={X_POST} target="_blank" rel="noreferrer">{TALK}</a></p>
+      <p className="src">{t('first.source')}<br /><a href={TALK_URL} target="_blank" rel="noreferrer">{t('talk.link')}</a></p>
       <div className="cta">
-        <button className="primary big" onClick={onStart}>Start</button>
-        <p className="hour">Ideally an hour before email or screens.</p>
-        <p className="assure">Free &middot; private &middot; works offline</p>
+        <button className="primary big" onClick={onStart}>{t('first.start')}</button>
+        <p className="hour">{t('welcome.hour')}</p>
+        <p className="assure">{t('first.assure')}</p>
       </div>
     </section>
   );
 }
 
-function Welcome({ bad, onStart, small, setSmall }: { bad: L.BadDay; onStart: () => void; small: boolean; setSmall: (b: boolean) => void }) {
+export function Welcome({ bad, onStart, small, setSmall }: { bad: L.BadDay; onStart: () => void; small: boolean; setSmall: (b: boolean) => void }) {
   const { eyebrow, showHourLine } = L.welcomeFraming(bad);
-  const hourLine = showHourLine && <p className="muted small">Ideally an hour before email or screens.</p>;
+  const hourLine = showHourLine && <p className="muted small">{t('welcome.hour')}</p>;
   if (bad.firstVisit && !bad.bad) return <FirstWelcome onStart={onStart} />;
   return (
     <section className="card">
       <p className="eyebrow">{eyebrow}</p>
       {bad.bad ? (
         <>
-          <h1 className="hero">Welcome back. No catching up needed.</h1>
-          <p className="muted">{bad.missedDays > 0 ? 'It\u2019s been a few days.' : 'Later start today.'} Even the best of the best feel this way sometimes. It happens to everybody.</p>
-          <blockquote>&ldquo;When I write, I feel like an armless, legless man with a crayon in his mouth.&rdquo;<cite>Kurt Vonnegut</cite></blockquote>
-          <p className="muted">You're better than you think, and you're definitely not alone.</p>
+          <h1 className="hero">{t('bad.hero')}</h1>
+          <p className="muted">{t(bad.missedDays > 0 ? 'bad.missed' : 'bad.late')} {t('bad.everybody')}</p>
+          <blockquote>&ldquo;{t('bad.vonnegut')}&rdquo;<cite>{t('bad.vonnegut.cite')}</cite></blockquote>
+          <p className="muted">{t('bad.notAlone')}</p>
           {hourLine}
-          <label className="toggle"><input type="checkbox" checked={small} onChange={(e) => setSmall(e.target.checked)} /> <span>Try a shorter block today (1 to 2h). A modified practice; the full block is two to three hours.</span></label>
+          <label className="toggle"><input type="checkbox" checked={small} onChange={(e) => setSmall(e.target.checked)} /> <span>{t('bad.shorter')}</span></label>
         </>
       ) : (
         <>
-          <h1 className="hero">Make some tea.</h1>
-          <p className="muted">Email can wait; it's the mind killer. This takes a few minutes, then one protected block.</p>
+          <h1 className="hero">{t('morning.hero')}</h1>
+          <p className="muted">{t('morning.email')} {t('morning.takes')}</p>
           {hourLine}
         </>
       )}
-      <div className="actions"><button className="primary" onClick={onStart}>I'm ready</button></div>
+      <div className="actions"><button className="primary" onClick={onStart}>{t('welcome.ready')}</button></div>
     </section>
   );
 }
@@ -360,24 +353,24 @@ function Ask({ items, setItem, onBack, onDone }: { items: L.Item[]; setItem: (id
   );
 }
 
-function Pick({ day, small, upd, onBack, onStart }: { day: L.Day; small: boolean; upd: (p: Partial<L.Day>) => void; onBack: () => void; onStart: (min: number) => void }) {
+export function Pick({ day, small, upd, onBack, onStart }: { day: L.Day; small: boolean; upd: (p: Partial<L.Day>) => void; onBack: () => void; onStart: (min: number) => void }) {
   const list = L.pickOrder(day.items);
   const [min, setMin] = useState<number>(small ? SMALL_BLOCK_DEFAULT : BLOCK_MIN);
   const late = isLate(clockNow(), 'pickWarning');
   if (!list.length) return (
     <section className="card">
-      <h1>Nothing got a yes.</h1>
-      <p className="muted">That's useful to know. Is there something you're avoiding that didn't make the list?</p>
-      <blockquote>{GUISE}<cite>Tim Ferriss</cite></blockquote>
-      <div className="actions"><button className="primary" onClick={onBack}>Look again</button></div>
+      <h1>{t('none.hero')}</h1>
+      <p className="muted">{t('none.useful')}</p>
+      <blockquote>{t('guise')}<cite>{t('cite.tim')}</cite></blockquote>
+      <div className="actions"><button className="primary" onClick={onBack}>{t('none.again')}</button></div>
     </section>
   );
   const opts = small ? BLOCK_CHOICES.small : BLOCK_CHOICES.full;
   return (
     <section className="card">
-      <p className="eyebrow">Pick one</p>
-      <h1>Which one thing gets today?</h1>
-      <p className="muted">With ten important things, nothing important gets done. So pick one.</p>
+      <p className="eyebrow">{t('pick.eyebrow')}</p>
+      <h1>{t('pick.hero')}</h1>
+      <p className="muted">{t('pick.ten')}</p>
       <div className="choices">
         {list.map((i) => (
           <button key={i.id} className={`choice ${day.chosenId === i.id ? 'on' : ''}`} onClick={() => upd({ chosenId: i.id })}>
@@ -385,13 +378,13 @@ function Pick({ day, small, upd, onBack, onStart }: { day: L.Day; small: boolean
           </button>
         ))}
       </div>
-      <p className="eyebrow">How long</p>
-      <div className="seg" role="radiogroup" aria-label="Block length">
+      <p className="eyebrow">{t('pick.howLong')}</p>
+      <div className="seg" role="radiogroup" aria-label={t('pick.lengthLabel')}>
         {opts.map((m) => <button key={m} role="radio" aria-checked={min === m} className={min === m ? 'on' : ''} onClick={() => setMin(m)}>{hrs(m)}</button>)}
       </div>
-      {small && <p className="muted small">A shorter block is a modified practice. The full block is two to three hours.</p>}
-      <p className="muted small">{small ? 'One unbroken block' : 'At least two to three hours, unbroken'}{late ? '. First thing is best, but now works too.' : ', first thing, before the day gets loud.'} Let the rest slide; it'll still be there tomorrow.</p>
-      <div className="actions sticky"><button className="primary" disabled={!L.validChoice(day.items, day.chosenId)} onClick={() => onStart(min)}>Start the block</button></div>
+      {small && <p className="muted small">{t('pick.smallNote')}</p>}
+      <p className="muted small">{fmt.pickLine(small, late)}</p>
+      <div className="actions sticky"><button className="primary" disabled={!L.validChoice(day.items, day.chosenId)} onClick={() => onStart(min)}>{t('pick.start')}</button></div>
     </section>
   );
 }
@@ -430,19 +423,19 @@ function Tally({ line }: { line: string }) {
   const m = /^(\d+) (.*)$/.exec(line);
   return <p className="tally">{m ? <><strong>{m[1]}</strong> <span>{m[2]}</span></> : <span>{line}</span>}</p>;
 }
-const SeeDays = ({ onDays }: { onDays: () => void }) => <p className="muted small"><button className="link flush" onClick={onDays}>See your days</button></p>;
+const SeeDays = ({ onDays }: { onDays: () => void }) => <p className="muted small"><button className="link flush" onClick={onDays}>{t('seeDays')}</button></p>;
 
 // the user's own answer, whatever the block did; a missed day adds nothing and nothing here says how long the block ran
-function Close({ didIt, item, total, onAnswer, onDays, onDone }: { didIt: boolean | null; item?: L.Item; total: number; onAnswer: (didIt: boolean) => void; onDays: () => void; onDone: () => void }) {
+export function Close({ didIt, item, total, onAnswer, onDays, onDone }: { didIt: boolean | null; item?: L.Item; total: number; onAnswer: (didIt: boolean) => void; onDays: () => void; onDone: () => void }) {
   const { note, count } = L.closeLines(didIt, total);
   return (
     <section className="card">
-      <p className="eyebrow">Close the day</p>
-      <h1>Did you do it?</h1>
-      <p className="muted">{item ? <>&ldquo;{item.text}&rdquo;, your one thing today.</> : 'Your one thing today.'}</p>
+      <p className="eyebrow">{t('close.eyebrow')}</p>
+      <h1>{t('close.hero')}</h1>
+      <p className="muted">{item ? fmt.closeItem(item.text) : t('close.noItem')}</p>
       <div className="yn">
-        <button className={didIt === true ? 'on' : ''} onClick={() => onAnswer(true)}>Yes</button>
-        <button className={didIt === false ? 'on' : ''} onClick={() => onAnswer(false)}>Not today</button>
+        <button className={didIt === true ? 'on' : ''} onClick={() => onAnswer(true)}>{t('close.yes')}</button>
+        <button className={didIt === false ? 'on' : ''} onClick={() => onAnswer(false)}>{t('close.notToday')}</button>
       </div>
       {note && (
         <>
@@ -452,29 +445,29 @@ function Close({ didIt, item, total, onAnswer, onDays, onDone }: { didIt: boolea
           <SeeDays onDays={onDays} />
         </>
       )}
-      <div className="actions"><button className="primary" disabled={didIt === null} onClick={onDone}>Close today</button></div>
+      <div className="actions"><button className="primary" disabled={didIt === null} onClick={onDone}>{t('close.today')}</button></div>
     </section>
   );
 }
 
-function Closed({ didIt, onDays, onStartOver }: { didIt: boolean | null; onDays: () => void; onStartOver: () => void }) {
+export function Closed({ didIt, onDays, onStartOver }: { didIt: boolean | null; onDays: () => void; onStartOver: () => void }) {
   // starting over wipes today's list and block, so it takes a second, explicit tap
   const [confirming, setConfirming] = useState(false);
   return (
     <section className="card">
-      <p className="eyebrow">Today is closed</p>
-      <h1>{didIt ? 'One thing, done.' : 'Tomorrow is a fresh page.'}</h1>
-      <p className="muted">Let the rest of the urgent but less important stuff slide. It'll still be there tomorrow.</p>
-      {didIt === false && <p className="muted">No streaks. If you slip, just come back.</p>}
+      <p className="eyebrow">{t('closed.eyebrow')}</p>
+      <h1>{t(didIt ? 'closed.done' : 'closed.fresh')}</h1>
+      <p className="muted">{t('closed.slide')}</p>
+      {didIt === false && <p className="muted">{t('closed.noStreaks')}</p>}
       <SeeDays onDays={onDays} />
       {confirming ? (
-        <div className="actions" role="group" aria-label="Start today over">
-          <p className="muted small" role="status">Start over? Today's list and block will be cleared.</p>
-          <button className="secondary" autoFocus onClick={onStartOver}>Yes, start over</button>
-          <button className="link" onClick={() => setConfirming(false)}>Keep today</button>
+        <div className="actions" role="group" aria-label={t('closed.overGroup')}>
+          <p className="muted small" role="status">{t('closed.overAsk')}</p>
+          <button className="secondary" autoFocus onClick={onStartOver}>{t('closed.overYes')}</button>
+          <button className="link" onClick={() => setConfirming(false)}>{t('closed.keep')}</button>
         </div>
       ) : (
-        <div className="actions"><button className="secondary" onClick={() => setConfirming(true)}>Start today over</button></div>
+        <div className="actions"><button className="secondary" onClick={() => setConfirming(true)}>{t('closed.overGroup')}</button></div>
       )}
     </section>
   );
@@ -540,8 +533,8 @@ function About({ reminder, total, onDays, setReminder }: { reminder: string | nu
       <h1>About</h1>
       <p className="muted">Tim Ferriss's morning method for efficacy, doing the right thing, rather than efficiency: his eight steps, condensed to three. Name what's uncomfortable, pick one thing, protect one block.</p>
       <blockquote>Being busy is a form of laziness.<cite>Tim Ferriss</cite></blockquote>
-      <blockquote>{GUISE}<cite>Tim Ferriss</cite></blockquote>
-      <p className="muted">Method by Tim Ferriss. <a href={X_POST} target="_blank" rel="noreferrer">{TALK}</a>.</p>
+      <blockquote>{t('guise')}<cite>{t('cite.tim')}</cite></blockquote>
+      <p className="muted">Method by Tim Ferriss. <a href={TALK_URL} target="_blank" rel="noreferrer">{t('talk.link')}</a>.</p>
       <p className="muted small">An independent app based on Tim Ferriss's method. Not affiliated with or endorsed by him.</p>
       {/* the count only once there is one: never a zero */}
       <button className="row-link" aria-label="Your days" onClick={onDays}><span>Your days</span><span>{total > 0 ? `${total} ›` : '›'}</span></button>

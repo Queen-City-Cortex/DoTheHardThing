@@ -1,5 +1,7 @@
 // Core, pure logic for Do The Hard Thing. No DOM, no storage: everything here is unit tested.
-// The method's numbers (items, block length, the break, the late cutoffs) come from src/method.ts, its only import.
+// The method's numbers (items, block length, the break, the late cutoffs) come from src/method.ts, and the close and
+// welcome lines from src/copy.ts: its only two imports, both pure.
+import { fmt, t } from './copy';
 import { BLOCK_MAX, BLOCK_MIN, BREAK_LIMIT_MS, BREAKS_PER_BLOCK, FULL_BLOCK_FOCUS_MIN, lateAt, MAX_ITEMS, PICK_FIRST, SMALL_BLOCK_DEFAULT, SMALL_BLOCK_OPTIONS, SUGGESTED_MIN } from './method';
 
 export type Tag = 'pushed' | 'risky' | 'anxious';
@@ -303,10 +305,10 @@ export function closeLines(didIt: boolean | null, total: number): { note: string
   if (didIt === null) return { note: null, count: null, first: false };
   if (didIt) {
     return total <= 1
-      ? { note: "That's your first one. Nothing else to add.", count: 'Your first day. It starts here.', first: true }
-      : { note: "Good. That's the whole thing for today.", count: `${total} days you've done your one thing since you started`, first: false };
+      ? { note: t('close.first'), count: t('close.firstCount'), first: true }
+      : { note: t('close.good'), count: fmt.closeCount(daysWord(total)), first: false };
   }
-  return { note: "That's alright. It'll still be there tomorrow.", count: total === 0 ? null : `${daysWord(total)} you've done your one thing since you started`, first: false };
+  return { note: t('close.alright'), count: total === 0 ? null : fmt.closeCount(daysWord(total)), first: false };
 }
 
 // ---------- bad days ----------
@@ -325,7 +327,7 @@ export function badDay(history: Day[], now: Date): BadDay {
 /** Welcome framing by the hour alone: before the welcomeFraming cutoff it is "before email" with the hour-before line,
  *  first visit or not, bad day or not; a late start meets the user where they are. */
 export function welcomeFraming(bad: BadDay): { eyebrow: string; showHourLine: boolean } {
-  return bad.late ? { eyebrow: 'Start where you are', showHourLine: false } : { eyebrow: 'Before email', showHourLine: true };
+  return bad.late ? { eyebrow: t('welcome.eyebrow.late'), showHourLine: false } : { eyebrow: t('welcome.eyebrow.morning'), showHourLine: true };
 }
 
 // ---------- reminder ----------
