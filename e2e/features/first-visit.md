@@ -40,5 +40,5 @@ Preconditions:
 - `Back` drops an unadded draft rather than carrying it to another step's tag.
 - Before multi-tag, typing the same text on a later step was rejected with `That is already on the list.`. That string is gone; a journey that still finds it is a regression.
 - On steps 2 and 3 there are no `listitem`s: the rows are buttons in the `Already on your list` group. `row(p, text)` in `drive.mjs` matches either form.
-- Items stored with an old single `tag` load as `tags: [tag]` (`src/storage.ts`); the storage key is `one-thing:v3` (a missing v3 is migrated from `one-thing:v2`, which is left in place).
+- Items stored with an old single `tag` load as `tags: [tag]` (`src/decode.ts`); the storage key is `one-thing:v3` (a missing v3 is migrated from `one-thing:v2`, which is left in place).
 - The service worker is not installed on the first load of a fresh context. Offline behavior is not covered here.

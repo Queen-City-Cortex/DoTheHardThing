@@ -1,26 +1,11 @@
-import { MAX_DAYS, supersedes, trimDays, type Archive, type Day, type Item, type Tag } from './logic';
+import { MAX_DAYS, supersedes, trimDays, type Archive, type Day } from './logic';
+import { decodeDays, isObj } from './decode';
 const KEY = 'one-thing:v3';
 const OLD_KEY = 'one-thing:v2'; // read once to migrate, never written or deleted
 export interface Store { days: Day[]; reminder: string | null; archive: Archive }
 const empty = (): Store => ({ days: [], reminder: null, archive: {} });
-const TAGS: Tag[] = ['pushed', 'risky', 'anxious'];
-/** Items stored before multi-tag had one `tag`; anything unreadable counts as pushed. */
-function migrateItem(raw: Item & { tag?: unknown }): Item {
-  const { tag, ...rest } = raw;
-  const from = Array.isArray(raw.tags) ? raw.tags : [tag];
-  const tags = TAGS.filter((t) => from.includes(t));
-  return { ...rest, tags: tags.length ? tags : ['pushed'] };
-}
-const isObj = (x: unknown): x is Record<string, unknown> => x != null && typeof x === 'object' && !Array.isArray(x);
-/** Days as stored, with items migrated and the "Did you do it?" fields defaulted. Unreadable entries are dropped. */
-function readDays(raw: unknown[]): Day[] {
-  return raw.filter((d): d is Day => isObj(d) && typeof d.date === 'string').map((d) => ({
-    ...d,
-    items: Array.isArray(d.items) ? d.items.filter((i: unknown) => isObj(i)).map(migrateItem) : d.items,
-    didIt: typeof d.didIt === 'boolean' ? d.didIt : null,
-    doneText: typeof d.doneText === 'string' ? d.doneText : null,
-  }));
-}
+/** Days as stored, decoded by decode.ts so nothing unreadable reaches the app. */
+const readDays = decodeDays;
 function readArchive(raw: unknown): Archive {
   if (!isObj(raw)) return {};
   const a: Archive = {};
@@ -43,7 +28,7 @@ export function migrateV2(raw: unknown): Store {
   if (!isObj(raw) || !Array.isArray(raw.days)) return empty();
   const days = readDays(raw.days).map((d) => {
     const didIt = d.gotBlock === true ? true : null;
-    const item = didIt && Array.isArray(d.items) ? d.items.find((i) => i.id === d.chosenId) : undefined;
+    const item = didIt ? d.items.find((i) => i.id === d.chosenId) : undefined;
     return { ...d, didIt, doneText: item ? item.text : null };
   });
   return { reminder: readReminder(raw.reminder), ...trimDays(days, {}) };
