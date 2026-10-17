@@ -1,4 +1,4 @@
-// The module map in eslint.config.js (OWNERS, OWNER_IMPORTS, PURE): in-memory snippets linted with the repo's own config.
+// The module map in eslint.config.js (OWNERS, OWNER_IMPORTS, PURE, METHOD_SYNTAX): in-memory snippets linted with the repo's own config.
 // Each bad snippet must be reported with its owner's message, which names the module and function to use instead;
 // each fine snippet must be clean. This checks what the rules catch, so a later block that silently replaces the
 // generated bans for some files fails here.
@@ -7,6 +7,11 @@
 //   (`window.navigator.serviceWorker`, `window.Date.now()`), and reading through a variable (`const k = 'localStorage'; window[k]`).
 //   Imports: a dynamic `import('./clock')` in an owner module, and `./../src/logic` in the worker (the `../src/*` group does not match that spelling).
 //   `const { now } = Date` IS caught (no-restricted-properties handles destructuring).
+// Pure modules: logic.ts may import only ./method; method.ts and events.ts import nothing.
+// Method numbers (METHOD_SYNTAX, everywhere in src except method.ts and tests) are caught only in the shapes they have
+// taken: an hour compared with a literal, numbers of 2 or more in an array literal, `.length` compared with a literal of
+// 2 or more, and `<n> * 60_000`. Not caught: a cutoff or count through a variable (`const late = 12; hourOf(t) >= late`),
+// arithmetic on the literal (`getHours() > 12 - 1`), a bare default (`useState(small ? 90 : BLOCK_MIN)`), `===` on a count.
 import { ESLint } from 'eslint';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -19,6 +24,10 @@ const JSON_PARSE = 'Parse stored data in src/storage.ts through the decoders in 
 const CLOCK = 'Only src/clock.ts reads the device clock. Use now() or today() from src/clock.ts';
 const REMINDER = 'Only src/reminder.ts touches Notification and the service worker. Use askPermission, askPermissionIfUnasked, readPermission, notify or scheduleReminder from src/reminder.ts.';
 const PURE = (f) => `${f} is pure: no imports and no DOM. Take the value as an argument;`;
+const LOGIC_PURE = 'src/logic.ts is pure: it may import only ./method and no DOM. Take the value as an argument;';
+const HOURS = "Late-hour cutoffs are method rules (PRODUCT QUESTION Q1, see docs/architecture.md): use isLate(t, 'welcomeFraming' | 'pickWarning') from src/clock.ts. The hours live in LATE_CUTOFFS in src/method.ts.";
+const RULE_NUMBER = 'Method numbers live in src/method.ts (RULES). Import the named constant (for example BLOCK_CHOICES, MAX_ITEMS, BREAK_LIMIT_MS) instead of writing the number here.';
+const ESCAPE = 'Not a method number? Name it as a constant and disable this rule on that one line with the reason.';
 const OWNER_IMPORT = (f) => `${f} may import only `;
 const UI = 'Only .tsx files are UI. Keep React and App out of .ts modules: export a plain function and call it from App.tsx.';
 const WORKER = 'The worker shares only the event list with the app. Import EVENTS from ../src/events, nothing else from src/.';
@@ -70,14 +79,20 @@ const BAD = [
   ['src/storage.ts', 'export const p = Notification.permission;', REMINDER],
   ['src/clock.ts', 'export const r = navigator.serviceWorker;', REMINDER],
   ['src/analytics.ts', "export const ok = 'Notification' in window;", REMINDER],
-  // pure modules import nothing, not even the owners (clock imports logic, never the other way) and touch no DOM
-  ['src/logic.ts', "import { now } from './clock'; export const x = now;", PURE('src/logic.ts')],
-  ['src/logic.ts', "import { load } from './storage'; export const x = load;", PURE('src/logic.ts')],
-  ['src/logic.ts', "import { readPermission } from './reminder'; export const x = readPermission;", PURE('src/logic.ts')],
-  ['src/logic.ts', "import { isObj } from './decode'; export const x = isObj;", PURE('src/logic.ts')],
-  ['src/logic.ts', "import { useState } from 'react'; export const x = useState;", PURE('src/logic.ts')],
-  ['src/logic.ts', 'export const w = window.innerWidth;', PURE('src/logic.ts')],
-  ['src/logic.ts', 'export const g = globalThis;', PURE('src/logic.ts')],
+  // pure modules import only their list (logic.ts: ./method; method.ts and events.ts: nothing), never the owners
+  // (clock imports logic, never the other way), and touch no DOM
+  ['src/logic.ts', "import { now } from './clock'; export const x = now;", LOGIC_PURE],
+  ['src/logic.ts', "import { load } from './storage'; export const x = load;", LOGIC_PURE],
+  ['src/logic.ts', "import { readPermission } from './reminder'; export const x = readPermission;", LOGIC_PURE],
+  ['src/logic.ts', "import { isObj } from './decode'; export const x = isObj;", LOGIC_PURE],
+  ['src/logic.ts', "import { useState } from 'react'; export const x = useState;", LOGIC_PURE],
+  ['src/logic.ts', 'export const w = window.innerWidth;', LOGIC_PURE],
+  ['src/logic.ts', 'export const g = globalThis;', LOGIC_PURE],
+  ['src/method.ts', "import { dayKey } from './logic'; export const x = dayKey;", PURE('src/method.ts')],
+  ['src/method.ts', "import { now } from './clock'; export const x = now;", PURE('src/method.ts')],
+  ['src/method.ts', 'export const d = document.title;', PURE('src/method.ts')],
+  ['src/method.ts', 'export const t = Date.now();', CLOCK],
+  ['src/events.ts', "import { MAX_ITEMS } from './method'; export const x = MAX_ITEMS;", PURE('src/events.ts')],
   ['src/logic.ts', 'export const t = Date.now();', CLOCK],
   ['src/logic.ts', 'export const s = localStorage;', STORAGE],
   ['src/events.ts', "import { dayKey } from './logic'; export const x = dayKey;", PURE('src/events.ts')],
@@ -90,6 +105,11 @@ const BAD = [
   ['src/reminder.ts', "import { track } from './analytics'; export const x = track;", OWNER_IMPORT('src/reminder.ts')],
   ['src/reminder.ts', "import { kv } from './storage'; export const x = kv;", OWNER_IMPORT('src/reminder.ts')],
   ['src/storage.ts', "import { useState } from 'react'; export const x = useState;", OWNER_IMPORT('src/storage.ts')],
+  // the method's numbers reach the owners through logic.ts or as arguments from App.tsx; only clock.ts (isLate) imports ./method
+  ['src/decode.ts', "import { MAX_ITEMS } from './method'; export const x = MAX_ITEMS;", OWNER_IMPORT('src/decode.ts')],
+  ['src/storage.ts', "import { MAX_ITEMS } from './method'; export const x = MAX_ITEMS;", OWNER_IMPORT('src/storage.ts')],
+  ['src/analytics.ts', "import { MAX_ITEMS } from './method'; export const x = MAX_ITEMS;", OWNER_IMPORT('src/analytics.ts')],
+  ['src/reminder.ts', "import { MAX_ITEMS } from './method'; export const x = MAX_ITEMS;", OWNER_IMPORT('src/reminder.ts')],
   // .ts modules are not UI
   ['src/decode.ts', "import { useState } from 'react'; export const x = useState;", OWNER_IMPORT('src/decode.ts')],
   ['src/decode.ts', "import App from './App'; export const x = App;", OWNER_IMPORT('src/decode.ts')],
@@ -98,6 +118,34 @@ const BAD = [
   // the worker takes only the event list from the app
   ['worker/index.ts', "import { dayKey } from '../src/logic'; export const x = dayKey;", WORKER],
   ['worker/index.ts', "import { load } from '../src/storage'; export const x = load;", WORKER],
+  // late-hour cutoffs: an hour compared with a literal, in the UI, a pure module, an owner and a plain module
+  ['src/App.tsx', 'export const late = (ms: number) => new Date(ms).getHours() >= 12;', HOURS],
+  ['src/App.tsx', 'export const late = (hour: number) => hour >= 11;', HOURS],
+  ['src/App.tsx', 'declare const hourOf: (t: number) => number; export const late = (t: number) => hourOf(t) < 12;', HOURS],
+  ['src/logic.ts', 'export const late = (now: Date) => now.getHours() >= 11;', HOURS],
+  ['src/logic.ts', 'export const late = (startHour: number) => 11 <= startHour;', HOURS],
+  ['src/clock.ts', 'export const late = (t: number) => new Date(t).getHours() >= 12;', HOURS],
+  ['src/decode.ts', 'export const late = (hour: number) => hour > 10;', HOURS],
+  ['src/other.ts', 'export const late = (d: Date) => d.getHours() >= 11;', HOURS],
+  ['src/App.tsx', 'export const late = (d: Date) => d.getUTCHours() >= 12;', HOURS],
+  ['src/App.tsx', 'export const late = (lateHour: number) => lateHour > 10;', HOURS],
+  // both messages end with the way out for a number that is not a method rule
+  ['src/App.tsx', 'export const late = (hour: number) => hour >= 11;', ESCAPE],
+  ['src/App.tsx', 'export const opts = [60, 90];', ESCAPE],
+  ['src/App.tsx', 'export const two = [1, 2];', RULE_NUMBER],
+  // rule numbers: block lengths in an array, item counts, minutes written as ms
+  ['src/App.tsx', 'export const opts = [60, 90, 120];', RULE_NUMBER],
+  ['src/App.tsx', 'export const opts = (small: boolean) => (small ? [60, 90, 120] : [120, 150, 180]);', RULE_NUMBER],
+  ['src/App.tsx', 'export const full = (xs: string[]) => xs.length >= 5;', RULE_NUMBER],
+  ['src/App.tsx', 'export const full = (xs: string[]) => 3 > xs.length;', RULE_NUMBER],
+  ['src/App.tsx', 'export const limit = 10 * 60_000;', RULE_NUMBER],
+  ['src/logic.ts', 'export const SMALL_BLOCK_OPTIONS = [60, 90];', RULE_NUMBER],
+  ['src/logic.ts', 'export const BREAK_LIMIT_MS = 10 * 60_000;', RULE_NUMBER],
+  ['src/logic.ts', 'export const limit = 60000 * 10;', RULE_NUMBER],
+  ['src/logic.ts', 'export const canAdd = (xs: string[]) => xs.length < 5;', RULE_NUMBER],
+  ['src/clock.ts', 'export const opts = [60, 90];', RULE_NUMBER],
+  ['src/clock.ts', 'export const limit = 10 * 60000;', RULE_NUMBER],
+  ['src/clock.ts', 'export const enough = (xs: number[]) => xs.length >= 3;', RULE_NUMBER],
 ];
 
 // [file, code]
@@ -109,9 +157,23 @@ const FINE = [
   // a timestamp passed in is fine anywhere
   ['src/App.tsx', 'export const d = (ms: number) => new Date(ms).getHours();'],
   ['src/logic.ts', 'export const day = (now: number) => new Date(now).getDate();'],
+  ['src/clock.ts', 'export const day = (t: number) => new Date(t).getDate(); export const h = (t: number) => new Date(t).getHours();'],
   // the imports each module is allowed
   ['src/App.tsx', "import { useState } from 'react'; import { now } from './clock'; import { load } from './storage'; export const x = [useState, now, load];"],
   ['src/clock.ts', "import { dayKey } from './logic'; export const x = dayKey;"],
+  ['src/clock.ts', "import { dayKey } from './logic'; import { lateAt } from './method'; export const x = [dayKey, lateAt];"],
+  ['src/logic.ts', "import { MAX_ITEMS } from './method'; export const x = MAX_ITEMS;"],
+  ['src/App.tsx', "import { BLOCK_CHOICES } from './method'; import { isLate } from './clock'; export const x = [BLOCK_CHOICES, isLate];"],
+  ['src/other.ts', "import { MAX_ITEMS } from './method'; export const x = MAX_ITEMS;"],
+  // the method's own numbers live in method.ts, the one file the method selectors skip
+  ['src/method.ts', 'export const opts = [60, 90, 120]; export const ms = 10 * 60_000; export const late = (hour: number) => hour >= 11; export const full = (xs: string[]) => xs.length >= 5;'],
+  // what the method selectors leave alone: a named constant, 0 and 1, a comparison that is not an hour, ms to minutes
+  ['src/App.tsx', "import { BREAK_LIMIT_MS, MAX_ITEMS } from './method'; export const ok = (xs: string[], away: number) => xs.length < MAX_ITEMS && away < BREAK_LIMIT_MS;"],
+  // an identifier that only mentions hours is not an hour of the day
+  ['src/App.tsx', 'export const soon = (hoursLeft: number) => hoursLeft < 1;'],
+  ['src/logic.ts', 'export const a = [0, 1]; export const any = (xs: string[]) => xs.length >= 1; export const mins = (ms: number) => Math.floor(ms / 60000);'],
+  ['src/App.tsx', 'export const tick = (f: () => void) => setInterval(f, 60_000); export const later = (x: number) => x >= 12;'],
+  ['src/logic.ts', "export const m = (s: string) => s.padStart(2, '0'); export const tags = ['risky', 'anxious', 'pushed'];"],
   ['src/storage.ts', "import { MAX_DAYS } from './logic'; import { isObj } from './decode'; export const x = [MAX_DAYS, isObj];"],
   ['src/reminder.ts', "import { now } from './clock'; import { nextReminder } from './logic'; export const x = [now, nextReminder];"],
   ['src/analytics.ts', "import { now } from './clock'; import { dayKey } from './logic'; import { kv } from './storage'; import { EVENTS } from './events'; export const x = [now, dayKey, kv, EVENTS];"],
@@ -121,6 +183,8 @@ const FINE = [
   // tests stub the globals and may import anything
   ['src/storage.test.ts', "localStorage.setItem('k', 'v'); export const t = Date.now(); export const j = JSON.parse('{}');"],
   ['src/logic.test.ts', "import { now } from './clock'; export const p = Notification.permission + String(now);"],
+  // tests are exempt from the method selectors too: they pin the numbers as literals on purpose (src/method.test.ts)
+  ['src/method.test.ts', 'export const opts = [60, 90, 120]; export const ms = 10 * 60_000; export const late = (hour: number) => hour >= 11; export const n = (xs: string[]) => xs.length >= 5;'],
   ['worker/index.test.ts', "import { dayKey } from '../src/logic'; export const x = dayKey;"],
 ];
 
@@ -134,6 +198,11 @@ const GAPS = [
   // import forms the core rule does not see
   ['src/storage.ts', "export const m = () => import('./clock');"],
   ['worker/index.ts', "import { dayKey } from './../src/logic'; export const x = dayKey;"],
+  // method numbers through a variable or arithmetic, a bare default, and an equality on a count
+  ['src/App.tsx', 'declare const hourOf: (t: number) => number; const late = 12; export const isLate = (t: number) => hourOf(t) >= late;'],
+  ['src/App.tsx', 'export const late = (d: Date) => d.getHours() > 12 - 1;'],
+  ['src/App.tsx', 'export const initial = (small: boolean, full: number) => (small ? 90 : full);'],
+  ['src/logic.ts', 'export const full = (xs: string[]) => xs.length === 5;'],
 ];
 
 describe('module map: bad snippets are reported with the fix', () => {

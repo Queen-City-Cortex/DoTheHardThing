@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import * as L from './logic';
+import { BLOCK_MIN } from './method';
 
 const it_ = (text: string, tag: L.Tag | L.Tag[], s: boolean | null = null, l: boolean | null = null, pushedCount = 0): L.Item => ({ id: text, text, tags: [tag].flat(), satisfied: s, leverage: l, pushedCount });
 const day = (date: string, items: L.Item[], extra: Partial<L.Day> = {}): L.Day => ({ date, openedAt: 0, items, chosenId: null, block: null, gotBlock: null, didIt: null, doneText: null, closed: false, ...extra });
@@ -429,7 +430,7 @@ describe('screenForBlock', () => {
 
 describe('midnight: the day a block started stays open until closed', () => {
   const at = (d: number, h: number, m = 0) => new Date(2026, 9, d, h, m).getTime();
-  const started = (min = 120) => day('2026-10-14', [it_('x', 'risky', true, true)], { chosenId: 'x', block: L.startBlock(min, at(14, 23, 30), min < L.BLOCK_MIN) });
+  const started = (min = 120) => day('2026-10-14', [it_('x', 'risky', true, true)], { chosenId: 'x', block: L.startBlock(min, at(14, 23, 30), min < BLOCK_MIN) });
 
   it('block started 23:30, reloaded 00:10: still running on yesterday', () => {
     const { day: d, carried } = L.activeDay([started()], at(15, 0, 10));

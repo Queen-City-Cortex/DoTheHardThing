@@ -26,6 +26,7 @@
     "check:dist": "node scripts/check-dist.mjs",
     "check:public-hygiene": "node scripts/check-public-hygiene.mjs",
     "check:agents-md": "node scripts/check-agents-md.mjs",
+    "check:quotes": "node scripts/check-method-quotes.mjs",
     "check:fast": "node scripts/check.mjs fast",
     "check": "node scripts/check.mjs",
     "check:full": "node scripts/check.mjs full",
