@@ -21,6 +21,7 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
+      - run: npm run check:dist
 
   # Deploys to Cloudflare only after `check` passes, and only for a push to master in
   # this repository: never for pull requests, never for forks (forks have no secrets anyway).

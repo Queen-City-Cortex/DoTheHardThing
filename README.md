@@ -38,6 +38,7 @@ npm run dev        # http://localhost:5173
 npm test           # Vitest: app logic, storage, reminders, contrast, analytics client, the Worker
 npm run lint       # ESLint
 npm run build      # tsc -b && vite build -> ./dist
+npm run check:dist # after a build: the service worker precaches every file the page loads, and the app shell gets no-cache headers
 npm run preview    # serve ./dist locally (http://127.0.0.1:4173)
 ```
 
@@ -57,7 +58,7 @@ Wrangler is not a project dependency: `npx` fetches the current version when you
 
 ### Automatic deploy
 
-Every push to `master` runs [`.github/workflows/ci.yml`](.github/workflows/ci.yml). Its `check` job runs lint, tests and build. When `check` passes, the `deploy` job builds again and runs `wrangler deploy`, then smoke-checks `https://dothehardthing.app` (the page is 200 and serves the new build's entry script, `GET /api/event` answers 405 from the Worker, and `og-image.png` is a 200). Pull requests and forks never deploy. Deploys are serialised (concurrency group `deploy-production`), the job has `contents: read` only, actions are pinned to commit SHAs, and Node comes from `.nvmrc`. Merging to `master` therefore deploys the site.
+Every push to `master` runs [`.github/workflows/ci.yml`](.github/workflows/ci.yml). Its `check` job runs lint, tests, build and `check:dist`. When `check` passes, the `deploy` job builds again and runs `wrangler deploy`, then smoke-checks `https://dothehardthing.app` (the page is 200 and serves the new build's entry script, `GET /api/event` answers 405 from the Worker, and `og-image.png` is a 200). Pull requests and forks never deploy. Deploys are serialised (concurrency group `deploy-production`), the job has `contents: read` only, actions are pinned to commit SHAs, and Node comes from `.nvmrc`. Merging to `master` therefore deploys the site.
 
 **GitHub secrets** (repository **Settings > Secrets and variables > Actions > Repository secrets > New repository secret**):
 
