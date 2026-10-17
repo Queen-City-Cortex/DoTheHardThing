@@ -3,7 +3,8 @@ import * as L from './logic';
 import { load, refresh, save, type Store } from './storage';
 import { track } from './analytics';
 import { askPermission, askPermissionIfUnasked, cancelReminder, notify, readPermission, reminderMode, scheduleReminder } from './reminder';
-import { now as clockNow, today } from './clock';
+import { now as clockNow, isLate, today } from './clock';
+import { BLOCK_CHOICES, BLOCK_MIN, BREAK_LIMIT_MIN, SMALL_BLOCK_DEFAULT } from './method';
 
 type Screen = 'welcome' | 'name' | 'ask' | 'pick' | 'block' | 'close' | 'closed' | 'about' | 'days';
 // About and Your days open over the day's screen and go back to where they were opened from
@@ -29,8 +30,7 @@ function resumeScreen(d: L.Day): Screen {
 }
 // the 120-day window goes through trimDays, so a done day that falls out still counts in the archive
 const putDay = (s: Store, d: L.Day): Store => ({ ...s, ...L.putDay(s, d) });
-// The Pick screen's late cutoff is 12; logic.ts LATE_HOUR (Welcome, bad-day logic) is 11. Both are deliberate until they are unified.
-const PICK_LATE_HOUR = 12;
+// The late cutoffs live in LATE_CUTOFFS in src/method.ts: Welcome and Pick differ on purpose until PRODUCT QUESTION Q1 is decided.
 const hrs = (m: number) => (m % 60 ? `${(m / 60).toFixed(1).replace(/\.0$/, '')}h` : `${m / 60}h`).replace('1.5h', '1½h').replace('2.5h', '2½h');
 
 export default function App() {
@@ -362,8 +362,8 @@ function Ask({ items, setItem, onBack, onDone }: { items: L.Item[]; setItem: (id
 
 function Pick({ day, small, upd, onBack, onStart }: { day: L.Day; small: boolean; upd: (p: Partial<L.Day>) => void; onBack: () => void; onStart: (min: number) => void }) {
   const list = L.pickOrder(day.items);
-  const [min, setMin] = useState(small ? 90 : L.BLOCK_MIN);
-  const late = new Date(clockNow()).getHours() >= PICK_LATE_HOUR;
+  const [min, setMin] = useState<number>(small ? SMALL_BLOCK_DEFAULT : BLOCK_MIN);
+  const late = isLate(clockNow(), 'pickWarning');
   if (!list.length) return (
     <section className="card">
       <h1>Nothing got a yes.</h1>
@@ -372,7 +372,7 @@ function Pick({ day, small, upd, onBack, onStart }: { day: L.Day; small: boolean
       <div className="actions"><button className="primary" onClick={onBack}>Look again</button></div>
     </section>
   );
-  const opts = small ? [60, 90, 120] : [120, 150, 180];
+  const opts = small ? BLOCK_CHOICES.small : BLOCK_CHOICES.full;
   return (
     <section className="card">
       <p className="eyebrow">Pick one</p>
@@ -410,7 +410,7 @@ function BlockView({ block, item, now, set }: { block: L.Block; item?: L.Item; n
         <span className="left">{paused ? 'holding' : 'left in the block'}</span>
       </div>
       {paused ? (
-        <p className="muted small">Stepped away {Math.floor(away / 60000)} min. Back within 10 to keep it one block. You get one pause per block.</p>
+        <p className="muted small">Stepped away {Math.floor(away / 60000)} min. Back within {BREAK_LIMIT_MIN} to keep it one block. You get one pause per block.</p>
       ) : (
         <p className="muted small">{block.drifts.length ? 'You came back. No need to spiral.' : 'No email, no social. Just this.'}{canPause && ' One short pause if you must, then back.'}</p>
       )}

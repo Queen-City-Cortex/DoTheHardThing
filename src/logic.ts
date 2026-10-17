@@ -1,13 +1,8 @@
 // Core, pure logic for Do The Hard Thing. No DOM, no storage: everything here is unit tested.
+// The method's numbers (items, block length, the break, the late cutoffs) come from src/method.ts, its only import.
+import { BLOCK_MAX, BLOCK_MIN, BREAK_LIMIT_MS, BREAKS_PER_BLOCK, FULL_BLOCK_FOCUS_MIN, lateAt, MAX_ITEMS, PICK_FIRST, SMALL_BLOCK_DEFAULT, SMALL_BLOCK_OPTIONS, SUGGESTED_MIN } from './method';
 
 export type Tag = 'pushed' | 'risky' | 'anxious';
-export const MAX_ITEMS = 5;
-export const SUGGESTED_MIN = 3;
-export const BLOCK_MIN = 120; // minutes of focus in a full block ("at least two to three hours")
-export const BLOCK_MAX = 180;
-export const SMALL_BLOCK_OPTIONS = [60, 90];
-export const BREAK_LIMIT_MS = 10 * 60_000;
-export const LATE_HOUR = 11; // opening at/after 11:00 local counts as a late start
 
 export interface Item {
   id: string;
@@ -35,7 +30,7 @@ export interface Day {
   items: Item[];
   chosenId: string | null;
   block: Block | null;
-  gotBlock: boolean | null; // did the block alone reach BLOCK_MIN of focus? kept for the record; nothing shown or counted reads it
+  gotBlock: boolean | null; // did the block alone reach FULL_BLOCK_FOCUS_MIN of focus? kept for the record; nothing shown or counted reads it
   didIt: boolean | null; // the user's own answer to "Did you do it?"; the only thing counts read
   doneText: string | null; // the one thing's text when didIt is true, so history outlives the item
   closed: boolean;
@@ -121,7 +116,7 @@ export const setAside = (items: Item[]) => filled(items).filter((i) => i.satisfi
 /** Pick list: risky (rejection or conflict) first, then everything else in the order written. */
 export function pickOrder(items: Item[]): Item[] {
   const hl = highLeverage(items);
-  return [...hl.filter((i) => i.tags.includes('risky')), ...hl.filter((i) => !i.tags.includes('risky'))];
+  return [...hl.filter((i) => i.tags.includes(PICK_FIRST)), ...hl.filter((i) => !i.tags.includes(PICK_FIRST))];
 }
 
 /** The chosen id if it is still in the pick list, otherwise null. */
@@ -132,7 +127,7 @@ export function validChoice(items: Item[], chosenId: string | null): string | nu
 // ---------- the block ----------
 export function clampBlock(min: number, small = false): number {
   const lo = small ? SMALL_BLOCK_OPTIONS[0] : BLOCK_MIN;
-  if (!Number.isFinite(min)) return small ? SMALL_BLOCK_OPTIONS[1] : BLOCK_MIN;
+  if (!Number.isFinite(min)) return small ? SMALL_BLOCK_DEFAULT : BLOCK_MIN;
   return Math.min(BLOCK_MAX, Math.max(lo, Math.round(min)));
 }
 
@@ -149,7 +144,11 @@ export const remainingMs = (b: Block, now: number) => Math.max(0, b.targetMin * 
 export const progress = (b: Block, now: number) => Math.min(1, focusMs(b, now) / (b.targetMin * 60_000));
 
 /** One step-away per block. An older stored block without `breaks` counts a recorded pause as its one break. */
-export const canPause = (b: Block) => b.endedAt == null && b.pausedAt == null && (b.breaks ?? (b.pausedMs > 0 ? 1 : 0)) === 0;
+export const canPause = (b: Block) => {
+  const taken = b.breaks ?? (b.pausedMs > 0 ? 1 : 0);
+  // a whole count from 0 up to the allowance; anything else in a corrupt store (-1, 0.5) is not an unused break
+  return b.endedAt == null && b.pausedAt == null && Number.isInteger(taken) && taken >= 0 && taken < BREAKS_PER_BLOCK;
+};
 
 export function pause(b: Block, now: number): Block {
   return canPause(b) ? { ...b, pausedAt: now, breaks: (b.breaks ?? 0) + 1 } : b;
@@ -172,11 +171,11 @@ export function settle(b: Block, now: number): Block {
 }
 export const drift = (b: Block, now: number): Block => ({ ...b, drifts: [...b.drifts, now] });
 export const stop = (b: Block, now: number): Block => (b.endedAt ? b : { ...settle(b, now), endedAt: b.pausedAt ?? now, endReason: 'stopped', pausedAt: null });
-/** A block is full once it has BLOCK_MIN of focus (the one break excluded), however it ended. Less is a start. */
+/** A block is full once it has FULL_BLOCK_FOCUS_MIN of focus (the one break excluded), however it ended. Less is a start. */
 export type BlockOutcome = 'full' | 'short' | 'running';
 export function blockOutcome(b: Block, now: number): BlockOutcome {
   if (b.endedAt == null) return 'running';
-  return focusMs(b, now) >= BLOCK_MIN * 60_000 ? 'full' : 'short';
+  return focusMs(b, now) >= FULL_BLOCK_FOCUS_MIN * 60_000 ? 'full' : 'short';
 }
 /** The answer a block gives on its own: false once a short block ends, true when a full block completes, else unchanged. */
 export function autoGotBlock(b: Block, now: number, prev: boolean | null): boolean | null {
@@ -312,17 +311,18 @@ export function closeLines(didIt: boolean | null, total: number): { note: string
 
 // ---------- bad days ----------
 export interface BadDay { missedDays: number; late: boolean; bad: boolean; firstVisit: boolean }
-/** Missed days = full days skipped since the last day with content. Late = opened at/after LATE_HOUR.
+/** Missed days = full days skipped since the last day with content. Late = opened at/after the welcomeFraming cutoff
+ *  (LATE_CUTOFFS in src/method.ts, Q1).
  *  A first visit (no prior days) is never a bad day: there is nothing to come "back" from. */
-export function badDay(history: Day[], now: Date, lateHour = LATE_HOUR): BadDay {
+export function badDay(history: Day[], now: Date): BadDay {
   const today = dayKey(now);
   const prev = lastDay(history, today);
   const missedDays = prev ? Math.max(0, daysBetween(prev.date, today) - 1) : 0;
-  const late = now.getHours() >= lateHour;
+  const late = lateAt(now.getHours(), 'welcomeFraming');
   const firstVisit = !prev;
   return { missedDays, late, bad: !firstVisit && (missedDays > 0 || late), firstVisit };
 }
-/** Welcome framing by the hour alone: before LATE_HOUR it is "before email" with the hour-before line,
+/** Welcome framing by the hour alone: before the welcomeFraming cutoff it is "before email" with the hour-before line,
  *  first visit or not, bad day or not; a late start meets the user where they are. */
 export function welcomeFraming(bad: BadDay): { eyebrow: string; showHourLine: boolean } {
   return bad.late ? { eyebrow: 'Start where you are', showHourLine: false } : { eyebrow: 'Before email', showHourLine: true };
