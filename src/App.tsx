@@ -29,7 +29,7 @@ function resumeScreen(d: L.Day): Screen {
 }
 // the 120-day window goes through trimDays, so a done day that falls out still counts in the archive
 const putDay = (s: Store, d: L.Day): Store => ({ ...s, ...L.putDay(s, d) });
-// Owner decision pending: logic.ts LATE_HOUR is 11, the Pick screen uses 12. Kept at 12 (current behavior) until decided.
+// The Pick screen's late cutoff is 12; logic.ts LATE_HOUR (Welcome, bad-day logic) is 11. Both are deliberate until they are unified.
 const PICK_LATE_HOUR = 12;
 const hrs = (m: number) => (m % 60 ? `${(m / 60).toFixed(1).replace(/\.0$/, '')}h` : `${m / 60}h`).replace('1.5h', '1½h').replace('2.5h', '2½h');
 

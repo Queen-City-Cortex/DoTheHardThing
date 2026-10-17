@@ -5,6 +5,7 @@
 // Known gaps, not caught by the built-in rules (lint is a guardrail, not a proof; the last describe pins them):
 //   aliasing (`const D = Date; D.now()`, `const w = window; w.localStorage`), a nested wrapper
 //   (`window.navigator.serviceWorker`, `window.Date.now()`), and reading through a variable (`const k = 'localStorage'; window[k]`).
+//   Imports: a dynamic `import('./clock')` in an owner module, and `./../src/logic` in the worker (the `../src/*` group does not match that spelling).
 //   `const { now } = Date` IS caught (no-restricted-properties handles destructuring).
 import { ESLint } from 'eslint';
 import { fileURLToPath } from 'node:url';
@@ -80,7 +81,8 @@ const BAD = [
   ['src/logic.ts', 'export const t = Date.now();', CLOCK],
   ['src/logic.ts', 'export const s = localStorage;', STORAGE],
   ['src/events.ts', "import { dayKey } from './logic'; export const x = dayKey;", PURE('src/events.ts')],
-  // owner modules do not import each other
+  // each owner module imports only its allow-list
+  ['src/decode.ts', "import { now } from './clock'; export const x = now;", OWNER_IMPORT('src/decode.ts')],
   ['src/storage.ts', "import { track } from './analytics'; export const x = track;", OWNER_IMPORT('src/storage.ts')],
   ['src/storage.ts', "import { now } from './clock'; export const x = now;", OWNER_IMPORT('src/storage.ts')],
   ['src/analytics.ts', "import { notify } from './reminder'; export const x = notify;", OWNER_IMPORT('src/analytics.ts')],
@@ -89,8 +91,10 @@ const BAD = [
   ['src/reminder.ts', "import { kv } from './storage'; export const x = kv;", OWNER_IMPORT('src/reminder.ts')],
   ['src/storage.ts', "import { useState } from 'react'; export const x = useState;", OWNER_IMPORT('src/storage.ts')],
   // .ts modules are not UI
-  ['src/decode.ts', "import { useState } from 'react'; export const x = useState;", UI],
-  ['src/decode.ts', "import App from './App'; export const x = App;", UI],
+  ['src/decode.ts', "import { useState } from 'react'; export const x = useState;", OWNER_IMPORT('src/decode.ts')],
+  ['src/decode.ts', "import App from './App'; export const x = App;", OWNER_IMPORT('src/decode.ts')],
+  ['src/other.ts', "import { useState } from 'react'; export const x = useState;", UI],
+  ['src/other.ts', "import App from './App'; export const x = App;", UI],
   // the worker takes only the event list from the app
   ['worker/index.ts', "import { dayKey } from '../src/logic'; export const x = dayKey;", WORKER],
   ['worker/index.ts', "import { load } from '../src/storage'; export const x = load;", WORKER],
@@ -112,6 +116,7 @@ const FINE = [
   ['src/reminder.ts', "import { now } from './clock'; import { nextReminder } from './logic'; export const x = [now, nextReminder];"],
   ['src/analytics.ts', "import { now } from './clock'; import { dayKey } from './logic'; import { kv } from './storage'; import { EVENTS } from './events'; export const x = [now, dayKey, kv, EVENTS];"],
   ['src/decode.ts', "import type { Day } from './logic'; export const x = (d: Day) => d;"],
+  ['worker/index.ts', "import { EVENTS } from '../src/events.ts'; export const x = EVENTS;"],
   ['worker/index.ts', "import { EVENTS } from '../src/events'; export const x = EVENTS;"],
   // tests stub the globals and may import anything
   ['src/storage.test.ts', "localStorage.setItem('k', 'v'); export const t = Date.now(); export const j = JSON.parse('{}');"],
@@ -126,6 +131,9 @@ const GAPS = [
   ['src/App.tsx', 'export const r = window.navigator.serviceWorker;'],
   ['src/App.tsx', 'export const t = window.Date.now();'],
   ['src/App.tsx', "const k = 'localStorage'; export const s = window[k];"],
+  // import forms the core rule does not see
+  ['src/storage.ts', "export const m = () => import('./clock');"],
+  ['worker/index.ts', "import { dayKey } from './../src/logic'; export const x = dayKey;"],
 ];
 
 describe('module map: bad snippets are reported with the fix', () => {

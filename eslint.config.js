@@ -40,10 +40,11 @@ const OWNERS = {
     syntax: ["BinaryExpression[operator='in'][left.value='Notification']", "BinaryExpression[operator='in'][left.value='serviceWorker']"],
   },
 }
-// What each owner module may import from src/ (and nothing from React): owners do not import each other, so a cycle
-// or a second path to the same API cannot appear. The fix is to pass the value in from the caller (App.tsx).
+// What each owner module (and decode.ts) may import from src/, and nothing from React. The lists are short on purpose: a module
+// that reaches for another owner is usually doing the caller's job. The fix is to pass the value in from the caller (App.tsx).
 const OWNER_IMPORTS = {
   'src/storage.ts': ['./logic', './decode'],
+  'src/decode.ts': ['./logic'],
   'src/clock.ts': ['./logic'],
   'src/reminder.ts': ['./logic', './clock'],
   'src/analytics.ts': ['./logic', './clock', './storage', './events'],
@@ -65,7 +66,7 @@ function boundaries({ file, pure = false, ui = false } = {}) {
   if (pure) for (const name of ['window', 'document', 'navigator', 'fetch', 'location', 'globalThis', 'self']) globals.push({ name, message: pureMessage(file) })
   const allowed = OWNER_IMPORTS[file]
   const imports = pure ? [{ group: ['*'], message: pureMessage(file) }]
-    : allowed ? [{ regex: `^(?!(${allowed.map((a) => a.replace('.', '\\.')).join('|')})$)`, message: `${file} may import only ${allowed.join(', ')}: owner modules do not import each other. Take the value as an argument and let App.tsx get it from the other owner (for example now() from src/clock.ts).` }]
+    : allowed ? [{ regex: `^(?!(${allowed.map((a) => a.replace('.', '\\.')).join('|')})$)`, message: `${file} may import only ${allowed.join(', ')}. Take the value as an argument and let App.tsx get it from the other owner (for example now() from src/clock.ts).` }]
     : ui ? [] : [UI_ONLY]
   return {
     'no-restricted-globals': ['error', ...globals],
@@ -111,7 +112,7 @@ export default tseslint.config(
     files: ['worker/**/*.ts'],
     ignores: TESTS,
     rules: {
-      'no-restricted-imports': ['error', { patterns: [{ group: ['../src/*', '!../src/events'], message: 'The worker shares only the event list with the app. Import EVENTS from ../src/events, nothing else from src/.' }] }],
+      'no-restricted-imports': ['error', { patterns: [{ group: ['../src/*', '!../src/events', '!../src/events.ts'], message: 'The worker shares only the event list with the app. Import EVENTS from ../src/events, nothing else from src/.' }] }],
     },
   },
 )

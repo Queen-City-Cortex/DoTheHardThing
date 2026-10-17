@@ -24,7 +24,7 @@ Each platform API has one owner module in `src/`. Every other module calls the o
 | `clock.ts` | `Date.now()` and `new Date()` with no argument | `now()`, `today()`; pass the number down |
 | `reminder.ts` | `Notification`, `navigator.serviceWorker` | `askPermission`, `askPermissionIfUnasked`, `readPermission`, `notify`, `scheduleReminder` |
 
-`logic.ts` and `events.ts` are pure: they import nothing and take every value as an argument (`clock.ts` imports `logic.ts`, never the other way). Owner modules do not import each other, `.ts` modules never import React, and the Worker imports only `events.ts` from the app. The `OWNERS` table in `eslint.config.js` turns this map into lint errors that name the function to call, and `scripts/boundaries.test.mjs` checks what those rules catch. Tests are exempt, since they stub the globals.
+`logic.ts` and `events.ts` are pure: they import nothing and take every value as an argument (`clock.ts` imports `logic.ts`, never the other way). Each owner module imports only what its entry in `OWNER_IMPORTS` lists, `.ts` modules never import React, and the Worker imports only `events.ts` from the app. The `OWNERS` table in `eslint.config.js` turns this map into lint errors that name the function to call, and `scripts/boundaries.test.mjs` checks what those rules catch. Tests are exempt, since they stub the globals.
 
 ## Local-first
 
