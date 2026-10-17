@@ -10,7 +10,8 @@
 // Pure modules: logic.ts may import only ./method and ./copy; method.ts, events.ts and copy.ts import nothing.
 // Screen copy (COPY_SCREENS): inside the listed screen functions, inline text of 4 or more words is reported. Not caught:
 // a module-level constant rendered by a screen, 1 to 3 words, a screen written as an arrow function or moved to another
-// file, and the screens not listed yet. A listed function that is no longer declared in its file fails the last describe.
+// file, and the screens not listed yet. Values of non-copy JSX attributes (className, id, key, href, rel, target, type,
+// role and the like) are not copy; aria-label and title are. A listed function that is no longer declared in its file fails the last describe.
 // Method numbers (METHOD_SYNTAX, everywhere in src except method.ts and tests) are caught only in the shapes they have
 // taken: an hour compared with a literal, numbers of 2 or more in an array literal, `.length` compared with a literal of
 // 2 or more, and `<n> * 60_000`. Not caught: a cutoff or count through a variable (`const late = 12; hourOf(t) >= late`),
@@ -31,6 +32,7 @@ const REMINDER = 'Only src/reminder.ts touches Notification and the service work
 const PURE = (f) => `${f} is pure: no imports and no DOM. Take the value as an argument;`;
 const LOGIC_PURE = 'src/logic.ts is pure: it may import only ./method, ./copy and no DOM. Take the value as an argument;';
 const MOVE_TEXT = "Move this text to src/copy.ts and render it with t(id); a talk quote needs kind: 'quote' and its transcript timestamp as ref.";
+const COPY_ESCAPE = 'Not words a person reads (a class list, an event name)? Disable this rule on that one line with the reason.';
 const HOURS = "Late-hour cutoffs are method rules (PRODUCT QUESTION Q1, see docs/architecture.md): use isLate(t, 'welcomeFraming' | 'pickWarning') from src/clock.ts. The hours live in LATE_CUTOFFS in src/method.ts.";
 const RULE_NUMBER = 'Method numbers live in src/method.ts (RULES). Import the named constant (for example BLOCK_CHOICES, MAX_ITEMS, BREAK_LIMIT_MS) instead of writing the number here.';
 const ESCAPE = 'Not a method number? Name it as a constant and disable this rule on that one line with the reason.';
@@ -112,6 +114,10 @@ const BAD = [
   ['src/App.tsx', 'export function Closed({ n }: { n: number }) { return <p>{`${n} days you have done it`}</p>; }', MOVE_TEXT],
   ['src/App.tsx', 'export function Welcome() { return <p aria-label="Start your day over now">x</p>; }', MOVE_TEXT],
   ['src/App.tsx', 'function FirstWelcome() { return <h1>Each morning, do it.</h1>; } export const x = FirstWelcome;', MOVE_TEXT],
+  // a class list on the same element does not hide the text, and aria-label or title text is read, so it is copy
+  ['src/App.tsx', 'export function Pick() { return <p className="muted small wide flush">Let the rest slide today.</p>; }', MOVE_TEXT],
+  ['src/App.tsx', "export function Pick() { return <button aria-label={'Start the block now'} title=\"Starts the block right away\">x</button>; }", MOVE_TEXT],
+  ['src/App.tsx', "declare const track: (e: string) => void; export function Pick() { track('pick started by the user'); return null; }", COPY_ESCAPE],
   // each owner module imports only its allow-list
   ['src/decode.ts', "import { now } from './clock'; export const x = now;", OWNER_IMPORT('src/decode.ts')],
   ['src/storage.ts', "import { track } from './analytics'; export const x = track;", OWNER_IMPORT('src/storage.ts')],
@@ -184,6 +190,9 @@ const FINE = [
   ['src/copy.ts', "export const COPY = { 'pick.hero': { kind: 'own', text: 'Which one thing gets today?' } };"],
   ['src/App.tsx', "declare const t: (id: string) => string; export function Pick() { return <h1 className=\"hero promise big\">{t('pick.hero')}</h1>; }"],
   ['src/App.tsx', 'export function Pick() { return <button>Start the block</button>; }'],
+  // attributes nobody reads as words: a four-token class list, id, key, rel, role or data value is not copy
+  ['src/App.tsx', 'export function Pick() { return <p className="muted small wide flush" id="a b c d" rel="noopener noreferrer x y" data-x="a b c d">x</p>; }'],
+  ['src/App.tsx', "declare const ok: boolean; export function Close() { return <p key={'a b c d'} className={`muted small wide flush ${ok ? 'on top of it' : 'x'}`}>x</p>; }"],
   ['src/App.tsx', 'export function Days() { return <p>Only the days you did it are listed.</p>; }'],
   ['src/App.tsx', "import { BLOCK_CHOICES } from './method'; import { isLate } from './clock'; export const x = [BLOCK_CHOICES, isLate];"],
   ['src/other.ts', "import { MAX_ITEMS } from './method'; export const x = MAX_ITEMS;"],

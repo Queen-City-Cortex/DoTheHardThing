@@ -48,6 +48,17 @@ describe('check:text', () => {
     expect(r.stderr).toContain('index.html:1:16  dash');
     expect(r.stderr).not.toContain('scripts/c.mjs');
   });
+  it('fails a code-point escape in src and a CSS escape in a src stylesheet, not a longer code point', () => {
+    const r = run({
+      'src/a.ts': "export const s = 'a \\u{2014} b \\u{02013}';\n",
+      'src/a.css': '.x::before { content: "\\2014"; } .y::after { content: "\\002013 "; }\n.z::after { content: "\\20140 \\2015"; }\n',
+      'src/b.ts': "export const s = 'a \\2014 b';\n", // a CSS escape means nothing in a .ts file
+      'e2e/c.mjs': "const re = /\\u{2014}/u;\n",
+    });
+    expect(r.status).toBe(1);
+    for (const at of ['src/a.ts:1:21  dash', 'src/a.ts:1:32  dash', 'src/a.css:1:24  dash', 'src/a.css:1:56  dash']) expect(r.stderr).toContain(at);
+    expect(r.stderr).toContain('check:text FAIL: 4 problem(s)');
+  });
   it('fails the domain in prose, in a code span with more than the hostname, and in any other casing', () => {
     const r = run({ 'README.md': `Visit ${domain} today.\nRun \`curl ${domain}\`.\nAlso ${'Dothehardthing'}.app.\n`, 'src/a.ts': `export const s = '${domain}';\n` });
     expect(r.status).toBe(1);

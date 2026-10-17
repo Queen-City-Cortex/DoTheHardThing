@@ -1,5 +1,6 @@
 // check:text: the wording rules for everything a person reads. Fails on
-//   an em or en dash (also written as a \u escape or an HTML entity in src/ and index.html, where it still renders as one),
+//   an em or en dash (also written as a \u or \u{} escape or an HTML entity in src/ and index.html, or a CSS escape in a
+//   src/ stylesheet, where it still renders as one),
 //   the domain in any form but DoTheHardThing.app (lowercase only in a URL or a markdown code span that is only the hostname),
 //   the brand in any casing but Do The Hard Thing.
 // Every hit prints file:line:col, the fix and the line. Runs in `npm run lint` and in `npm run check:fast`.
@@ -20,7 +21,8 @@ const TEXT = /\.(tsx?|m?js|mts|md|html|txt|css|json)$|(^|\/)vdt$/;
 const SKIP_DIRS = new Set(['node_modules', 'dist', '.git', '.wrangler', 'coverage']);
 
 const DASH = /[\u2013\u2014]/g;
-const DASH_ESCAPE = /\\u201[34]|&[mn]dash;|&#(8211|8212|x201[34]);/gi; // in src/ and index.html only
+const DASH_ESCAPE = /\\u201[34]|\\u\{0*201[34]\}|&[mn]dash;|&#(8211|8212|x201[34]);/gi; // in src/ and index.html only
+const CSS_DASH_ESCAPE = /\\0{0,2}201[34](?![0-9a-f])/gi; // content: "\2014" in a src/ stylesheet (up to 6 hex digits)
 const DOMAIN = /dothehardthing\.app/gi;
 const DISPLAY = 'DoTheHardThing.app';
 const BRAND = /\bdo\s+the\s+hard\s+thing\b/gi;
@@ -70,6 +72,7 @@ for (const f of files) {
     const at = (m, rule) => problems.push(`${f}:${n + 1}:${m.index + 1}  ${rule}: ${FIX[rule]}\n  ${line.trim().slice(0, 160)}`);
     for (const m of line.matchAll(DASH)) at(m, 'dash');
     if (escapes) for (const m of line.matchAll(DASH_ESCAPE)) at(m, 'dash');
+    if (escapes && f.endsWith('.css')) for (const m of line.matchAll(CSS_DASH_ESCAPE)) at(m, 'dash');
     for (const m of line.matchAll(DOMAIN)) {
       if (m[0] === DISPLAY) continue;
       const why = m[0] === m[0].toLowerCase() && domainAllowed(line, m.index, m[0].length, f);

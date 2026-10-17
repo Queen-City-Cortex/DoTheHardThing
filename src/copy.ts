@@ -12,14 +12,16 @@
 // src/copy.test.ts checks the quotes and refs against the transcript where FERRISS_TRANSCRIPT points at one (the transcript
 // is not in the repo), and checks kinds, ref shapes and the REQUIRED lines everywhere.
 
-/** A timestamp in the talk transcript, m:ss. */
-export type TalkRef = `${number}:${number}`;
+type Digit = '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9';
+/** A timestamp in the talk transcript, m:ss (two digits of seconds, so '4:5' and '4:005' are type errors). */
+export type TalkRef = `${number}:${Digit}${Digit}`;
 export type CopyEntry =
   | { kind: 'quote'; text: string; ref: TalkRef }
   | { kind: 'paraphrase'; text: string; ref: TalkRef }
   | { kind: 'own'; text: string; ref?: never };
 
-// the brand in Title Case and the domain as people read it; links use SITE_URL
+// the brand in Title Case and the domain as people read it. DOMAIN_DISPLAY and SITE_URL have no consumer yet: they are
+// reserved for step 7 and the other surfaces (the remaining screens, the share text, the meta tags)
 export const BRAND = 'Do The Hard Thing';
 export const DOMAIN_DISPLAY = 'DoTheHardThing.app';
 export const SITE_URL = 'https://dothehardthing.app';
@@ -75,6 +77,8 @@ export const COPY = entries({
   'pick.howLong': { kind: 'own', text: 'How long' },
   'pick.lengthLabel': { kind: 'own', text: 'Block length' },
   'pick.smallNote': { kind: 'own', text: 'A shorter block is a modified practice. The full block is two to three hours.' },
+  // first.step3.d without the period: the Pick line goes on after it (fmt.pickLine), so it is its own entry, which the
+  // one-line-one-entry test cannot see
   'pick.full': { kind: 'paraphrase', text: 'At least two to three hours, unbroken', ref: '5:01' },
   'pick.small': { kind: 'own', text: 'One unbroken block' },
   'pick.early': { kind: 'own', text: 'first thing, before the day gets loud.' },

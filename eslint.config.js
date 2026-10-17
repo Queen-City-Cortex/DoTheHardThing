@@ -83,11 +83,16 @@ const METHOD_SYNTAX = [
 export const COPY_SCREENS = {
   'src/App.tsx': ['FirstWelcome', 'Welcome', 'Pick', 'Close', 'Closed'],
 }
-const MOVE_TEXT = "Move this text to src/copy.ts and render it with t(id); a talk quote needs kind: 'quote' and its transcript timestamp as ref."
+const MOVE_TEXT = "Move this text to src/copy.ts and render it with t(id); a talk quote needs kind: 'quote' and its transcript timestamp as ref." +
+  ' Not words a person reads (a class list, an event name)? Disable this rule on that one line with the reason.'
 const FOUR_WORDS = '/\\S+\\s+\\S+\\s+\\S+\\s+\\S+/'
+// JSX attributes whose value is never read as words: a class list or id of four tokens is not copy. aria-label and
+// title are read (aloud or on hover), so they stay copy.
+const NOT_COPY_ATTR = 'JSXAttribute[name.name=/^(className|id|key|href|src|rel|target|type|role|name|htmlFor|autoComplete|inputMode|aria-(live|hidden|controls|describedby|labelledby)|data-.+)$/]'
 const copySyntax = (screens) => {
   const inScreen = `FunctionDeclaration[id.name=/^(${screens.join('|')})$/]`
-  return [`JSXText[value=${FOUR_WORDS}]`, `Literal[value=${FOUR_WORDS}]`, `TemplateElement[value.raw=${FOUR_WORDS}]`]
+  const copy = (node) => `${node}:not(${NOT_COPY_ATTR} ${node.split('[')[0]})`
+  return [`JSXText[value=${FOUR_WORDS}]`, copy(`Literal[value=${FOUR_WORDS}]`), copy(`TemplateElement[value.raw=${FOUR_WORDS}]`)]
     .map((node) => ({ selector: `${inScreen} ${node}`, message: MOVE_TEXT }))
 }
 const UI_ONLY = { group: ['react', 'react-dom', 'react-dom/*', './App', './main'], message: 'Only .tsx files are UI. Keep React and App out of .ts modules: export a plain function and call it from App.tsx.' }

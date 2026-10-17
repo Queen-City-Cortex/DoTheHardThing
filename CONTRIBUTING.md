@@ -29,7 +29,7 @@ Changes that touch what a person sees or does (screens, copy, the block timer, c
 - Keep the diff small. Do not mix refactors with behavior changes.
 - No new runtime dependencies without a good reason. The app is small on purpose.
 - Read storage, the clock and notifications only through their owner modules (`src/storage.ts`, `src/clock.ts`, `src/reminder.ts`); `npm run lint` names the function to call. See the module map in [docs/architecture.md](./docs/architecture.md#module-map).
-- The words of the Welcome, Pick, Close and Closed screens live in `src/copy.ts`, each marked as a talk quote, a paraphrase or the app's own words; see [docs/architecture.md](./docs/architecture.md#the-words-on-screen).
+- The words of the Welcome, Pick, Close and Closed screens live in `src/copy.ts`, each marked as a talk quote, a paraphrase or the app's own words; see [docs/architecture.md](./docs/architecture.md#the-words-on-screen). Quotes are checked word for word against the talk only where `FERRISS_TRANSCRIPT` points at a transcript (`[m:ss] words` per line); CI cannot, so a maintainer with the transcript runs `npm test` before merging a copy change.
 - Do not rename the `localStorage` keys (`one-thing:*`). Existing users' days live there. See [docs/architecture.md](./docs/architecture.md).
 - Never send what a person writes anywhere. Item text stays on the device.
 

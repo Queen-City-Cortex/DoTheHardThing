@@ -71,7 +71,9 @@ async function answerAll(p, answers) { // answers: [[sat, lev], ...] in guided o
   }
 }
 const FIRST_H1 = t('first.hero');
-const READY = new RegExp(`^(${t('first.start')}|${t('welcome.ready')})$`); // `Start` on the first-ever visit, `I'm ready` on every returning welcome
+/** A RegExp source that matches `s` literally: copy text often ends in `.` or `?`. */
+const rx = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const READY = new RegExp(`^(${rx(t('first.start'))}|${rx(t('welcome.ready'))})$`); // `Start` on the first-ever visit, `I'm ready` on every returning welcome
 const TALK = t('talk.link');
 const STEPS3 = [['first.step1', 'first.step1.d'], ['first.step2', 'first.step2.d'], ['first.step3', 'first.step3.d']].map(([a, b]) => [t(a), t(b)]);
 const HOUR_LINE = t('welcome.hour');
@@ -81,7 +83,7 @@ async function expectFirstWelcome(p) {
   await expect(h1(p)).toHaveText(FIRST_H1);
   await expect(p.getByText(t('first.eyebrow'), { exact: true })).toBeVisible();
   const how = p.getByRole('listitem'); await expect(how).toHaveCount(3);
-  for (const [i, [t, d]] of STEPS3.entries()) await expect(how.nth(i)).toHaveText(`${i + 1}${t}${d}`);
+  for (const [i, [title, d]] of STEPS3.entries()) await expect(how.nth(i)).toHaveText(`${i + 1}${title}${d}`);
   await expect(p.getByText(t('first.source'))).toBeVisible();
   const link = p.getByRole('link', { name: TALK }); await expect(link).toHaveCount(1);
   await expect(link).toHaveAttribute('href', TALK_URL); await expect(link).toHaveAttribute('target', '_blank'); await expect(link).toHaveAttribute('rel', /noreferrer/);
@@ -225,7 +227,8 @@ async function nextMorningLeftover(s, at, label = 'next-morning-leftover') {
 
 // welcome framing by the hour: before 11:00 `Before email` plus the hour-before line, from 11:00 `Start where you are` and no line
 async function expectFraming(p, late) {
-  const [on, off] = [t('welcome.eyebrow.late'), t('welcome.eyebrow.morning')][late ? 'slice' : 'reverse']();
+  const lateEyebrow = t('welcome.eyebrow.late'), morningEyebrow = t('welcome.eyebrow.morning');
+  const [on, off] = late ? [lateEyebrow, morningEyebrow] : [morningEyebrow, lateEyebrow];
   await expect(p.getByText(on, { exact: true })).toBeVisible();
   await expect(p.getByText(off, { exact: true })).toHaveCount(0);
   if (late) await expect(p.getByText(HOUR_LINE)).toHaveCount(0); else await expect(p.getByText(HOUR_LINE)).toBeVisible();
@@ -388,10 +391,10 @@ const J = {
     await p.clock.setSystemTime(new Date('2026-10-15T14:00:00')); await p.reload();
     await s.step('toggle-shorter', async () => {
       await expect(h1(p)).toHaveText(t('bad.hero'));
-      await p.getByRole('checkbox', { name: 'Try a shorter block today (1 to 2h). A modified practice; the full block is two to three hours.' }).check();
+      await p.getByRole('checkbox', { name: t('bad.shorter') }).check();
     });
     await throughToPick(s);
-    await expect(p.getByText('A shorter block is a modified practice. The full block is two to three hours.')).toBeVisible();
+    await expect(p.getByText(t('pick.smallNote'))).toBeVisible();
     await expect(p.getByRole('radio', { name: '2h', exact: true })).toBeVisible(); // 120 stays offered: a full block
     await startBlock(s, 'Ask for the raise', '1h', '1:00:00');
     await p.clock.runFor('01:00:01');
@@ -509,7 +512,7 @@ const J = {
     await p.reload();
     await s.step('reload-still-closed', async () => {
       await expect(p.getByText(t('closed.eyebrow'))).toBeVisible();
-      await expect(h1(p)).toHaveText('One thing, done.');
+      await expect(h1(p)).toHaveText(t('closed.done'));
       await expect(p.getByText('Let the rest of the urgent but less important stuff slide.', { exact: false })).toBeVisible();
       await expect(SEE_DAYS(p)).toBeVisible();
       await noVerdict(p);
@@ -520,7 +523,7 @@ const J = {
   'start-over-confirm': async (s) => { // Start today over asks once inline; Keep today changes nothing
     const p = s.page;
     await J['close-day'](s);
-    const closedHeading = 'One thing, done.';
+    const closedHeading = t('closed.done');
     await s.step('ask-start-over', async () => {
       await p.getByRole('button', { name: t('closed.overGroup') }).click();
       await expect(p.getByText('Start over?')).toBeVisible();
@@ -551,7 +554,7 @@ const J = {
     await p.clock.setSystemTime(new Date('2026-10-15T14:00:00')); await p.reload();
     await s.step('day2-late', async () => {
       await expect(h1(p)).toHaveText(t('bad.hero'));
-      await expect(p.getByText('Later start today.')).toBeVisible();
+      await expect(p.getByText(t('bad.late'))).toBeVisible();
       await expectFraming(p, true);
       await expect(p.getByRole('checkbox', { name: /shorter block.*modified practice/ })).toBeVisible();
     });
@@ -572,7 +575,7 @@ const J = {
     await p.clock.setSystemTime(new Date('2026-10-15T08:00:00')); await p.reload();
     await s.step('thu-welcome-back', async () => {
       await expect(h1(p)).toHaveText(t('bad.hero'));
-      await expect(p.getByText('It’s been a few days.')).toBeVisible();
+      await expect(p.getByText(t('bad.missed'))).toBeVisible();
       await expectFraming(p, false); // bad only because of missed days: still a morning
     });
     await s.step('mon-leftovers', async () => { await p.getByRole('button', { name: READY }).click(); await expect(p.getByRole('button', { name: /Ask for the raise/ })).toBeVisible(); });
@@ -583,7 +586,7 @@ const J = {
     await p.clock.setSystemTime(new Date('2026-10-15T08:00:00')); await p.reload();
     await s.step('next-morning-welcome', async () => {
       await expect(h1(p)).toHaveText(t('morning.hero'));
-      await expect(p.getByText("Email can wait; it's the mind killer.", { exact: false })).toBeVisible();
+      await expect(p.getByText(t('morning.email'), { exact: false })).toBeVisible();
       await expect(p.getByText('Pen and paper', { exact: false })).toHaveCount(0);
       await expectFraming(p, false);
     });
@@ -605,13 +608,13 @@ const J = {
     });
     await s.step('nothing-got-a-yes', async () => {
       await expect(h1(p)).toHaveText(t('none.hero'));
-      await expect(quote(p, GUISE)).toContainText('Tim Ferriss');
+      await expect(quote(p, GUISE)).toContainText(t('cite.tim'));
       await p.getByRole('button', { name: t('none.again') }).click();
     });
     await s.step('ask-again', async () => { await answerAll(p, [[true, true]]); });
     await s.step('pick-hint', async () => {
       await expect(h1(p)).toHaveText(t('pick.hero'));
-      await expect(p.getByText('With ten important things, nothing important gets done. So pick one.')).toBeVisible();
+      await expect(p.getByText(t('pick.ten'))).toBeVisible();
       await expect(p.getByText('Most important usually means most uncomfortable.')).toHaveCount(0);
     });
     await startBlock(s);
@@ -682,10 +685,10 @@ const J = {
     await s.step('switch-to-yes', async () => { await answer(p, true, NOTE.first, FIRST_DAY); });
     await s.step('switch-back-not-today', async () => { await answer(p, false, NOTE.no, null); });
     await s.step('yes-again', async () => { await answer(p, true, NOTE.first, FIRST_DAY); });
-    await s.step('close-today', async () => { await closeToday(p, true); await expect(p.getByText('No streaks. If you slip, just come back.')).toHaveCount(0); }); // a done day says nothing about streaks
+    await s.step('close-today', async () => { await closeToday(p, true); await expect(p.getByText(t('closed.noStreaks'))).toHaveCount(0); }); // a done day says nothing about streaks
     await newDayAt(p, '2026-10-15T07:30:00');
     await ritualDay(s, { item: 'Call the landlord', yes: false, note: NOTE.no, line: count(1) });
-    await expect(p.getByText('No streaks. If you slip, just come back.')).toBeVisible(); // Not today, closed: a gentle line, no number
+    await expect(p.getByText(t('closed.noStreaks'))).toBeVisible(); // Not today, closed: a gentle line, no number
     await expect(p.getByText("1 day you've done your one thing since you started", { exact: true })).toHaveCount(0); // gone with Close
     const st = await s.store();
     const got = st.days.map((d) => [d.date, d.didIt, d.doneText]);
@@ -756,7 +759,7 @@ const J = {
     await s.step('back-to-close', async () => { await p.getByRole('button', { name: 'Back' }).click(); await expect(h1(p)).toHaveText(t('close.hero')); });
     await s.step('close-today', async () => { await closeToday(p, true); });
     await s.step('closed-to-days', async () => { await SEE_DAYS(p).click(); await expectHistory(p, one); });
-    await s.step('done-to-closed', async () => { await p.getByRole('button', { name: 'Done' }).click(); await expect(h1(p)).toHaveText('One thing, done.'); });
+    await s.step('done-to-closed', async () => { await p.getByRole('button', { name: 'Done' }).click(); await expect(h1(p)).toHaveText(t('closed.done')); });
     await s.step('about', async () => {
       await p.getByRole('button', { name: 'About' }).click();
       await expect(h1(p)).toHaveText('About');
@@ -769,7 +772,7 @@ const J = {
       await p.getByRole('button', { name: 'Back' }).click();
       await expect(h1(p)).toHaveText('About');
     });
-    await s.step('done-to-closed-again', async () => { await p.getByRole('button', { name: 'Done' }).click(); await expect(h1(p)).toHaveText('One thing, done.'); });
+    await s.step('done-to-closed-again', async () => { await p.getByRole('button', { name: 'Done' }).click(); await expect(h1(p)).toHaveText(t('closed.done')); });
   },
   'step0-bring-in': async (s) => { // yesterday's open items are offered on step 1, nothing pre-selected; only what is tapped comes along
     const p = s.page;
@@ -878,7 +881,7 @@ const J = {
     await expect.poll(async () => { const d = done14(await s.store()); return [d?.didIt, d?.closed, d?.doneText]; }).toEqual([true, true, 'Ask for the raise']);
     await s.step('tab-b-focus', async () => { // the real refresh: focus pulls in what tab A saved
       await B.evaluate(() => window.dispatchEvent(new Event('focus')));
-      await expect(h1(B)).toHaveText('One thing, done.');
+      await expect(h1(B)).toHaveText(t('closed.done'));
       await noVerdict(B);
     });
     await s.step('tab-b-history', async () => { await SEE_DAYS(B).click(); await expectHistory(B, { total: 1, month: 'October', rows: [['Wed 14', 'Ask for the raise']] }); });
@@ -1211,26 +1214,26 @@ const reviewJourneys = {
     for (const [w, h] of [[320, 640], [360, 640], [375, 667], [390, 844], [430, 932]]) {
       await p.setViewportSize({ width: w, height: h });
       for (const x of await layoutProblems(p)) problems.push(`@${w}x${h}: ${x}`);
-      const startBox = await p.getByRole('button', { name: 'Start', exact: true }).boundingBox(); const linkBox = await p.getByRole('link', { name: TALK }).boundingBox();
+      const startBox = await p.getByRole('button', { name: t('first.start'), exact: true }).boundingBox(); const linkBox = await p.getByRole('link', { name: TALK }).boundingBox();
       if (startBox.height < 44 || linkBox.height < 44) problems.push(`@${w}x${h}: Start ${startBox.height}px / link ${linkBox.height}px tall, under 44`);
-      for (const [n, l] of [['Start', p.getByRole('button', { name: 'Start', exact: true })], ['hour line', p.getByText(HOUR_LINE, { exact: true })], ['assurance', p.getByText(ASSURE, { exact: true })]]) { const b = await l.boundingBox(); if (b.y + b.height > h) problems.push(`@${w}x${h}: ${n} ends at ${Math.round(b.y + b.height)}, below the ${h}px fold`); }
+      for (const [n, l] of [['Start', p.getByRole('button', { name: t('first.start'), exact: true })], ['hour line', p.getByText(HOUR_LINE, { exact: true })], ['assurance', p.getByText(ASSURE, { exact: true })]]) { const b = await l.boundingBox(); if (b.y + b.height > h) problems.push(`@${w}x${h}: ${n} ends at ${Math.round(b.y + b.height)}, below the ${h}px fold`); }
       if (w === 390 || w === 320) await s.shot(`welcome-${w}`);
     }
     await p.setViewportSize({ width: 390, height: 844 });
     for (const scheme of ['light', 'dark']) { await p.emulateMedia({ colorScheme: scheme }); for (const x of await contrastFailures(p)) problems.push(`welcome (${scheme}): ${x}`); }
     await p.emulateMedia({ colorScheme: 'light' });
     if (problems.length) throw new Error(`${problems.length} problems: ` + problems.slice(0, 6).join(' | '));
-    await s.step('start-and-back', async () => { await p.getByRole('button', { name: 'Start', exact: true }).click(); await expect(h1(p)).toHaveText(PUSHED_Q); await p.getByRole('button', { name: 'Back' }).click(); await expectFirstWelcome(p); });
+    await s.step('start-and-back', async () => { await p.getByRole('button', { name: t('first.start'), exact: true }).click(); await expect(h1(p)).toHaveText(PUSHED_Q); await p.getByRole('button', { name: 'Back' }).click(); await expectFirstWelcome(p); });
     await s.step('about-from-welcome', async () => { await p.getByRole('button', { name: 'About' }).click(); await expect(h1(p)).toHaveText('About'); await p.getByRole('button', { name: 'Done' }).click(); await expectFirstWelcome(p); });
     await throughToPick(s, { risky: ['Ask for the raise'], anxious: [] }); await startBlock(s); await p.clock.runFor('02:00:01');
     await YES(p).click(); await CLOSE_TODAY(p).click();
     await newDayAt(p, '2026-10-15T08:00:00');
-    await s.step('returning-welcome', async () => { await expect(h1(p)).toHaveText(t('morning.hero')); await expect(p.getByRole('button', { name: t('welcome.ready') })).toBeVisible(); await expect(p.getByRole('button', { name: 'Start', exact: true })).toHaveCount(0); await expect(p.getByRole('listitem')).toHaveCount(0); });
+    await s.step('returning-welcome', async () => { await expect(h1(p)).toHaveText(t('morning.hero')); await expect(p.getByRole('button', { name: t('welcome.ready') })).toBeVisible(); await expect(p.getByRole('button', { name: t('first.start'), exact: true })).toHaveCount(0); await expect(p.getByRole('listitem')).toHaveCount(0); });
   },
   'focus-after-nav': async (s) => { // after every screen change focus is on the new heading (the input on the name steps), so a keyboard user can type and press Enter at once
     const p = s.page; const A = (n) => p.getByRole('button', { name: n, exact: true });
     await s.step('welcome', async () => { await expectFirstWelcome(p); });
-    await A('Start').focus(); await p.keyboard.press('Enter');
+    await A(t('first.start')).focus(); await p.keyboard.press('Enter');
     await s.step('name-1', async () => { await expect(p.getByRole('textbox', { name: PUSHED_Q })).toBeFocused(); await p.keyboard.type('Call mom'); await p.keyboard.press('Enter'); await expect(row(p, 'Call mom')).toBeVisible(); await expect(p.getByRole('textbox')).toBeFocused(); });
     await expect(p.getByRole('img', { name: 'Step 1 of 3' })).toBeVisible(); // the progress dots are an image with a label, not a bare div
     await A('Next').focus(); await p.keyboard.press('Enter');
@@ -1249,11 +1252,11 @@ const reviewJourneys = {
     await p.clock.runFor('05:00'); await A('End block').click();
     await s.step('close', async () => { await expectFocusOnHeading(p, t('close.hero'), 'End block'); });
     await YES(p).click(); await CLOSE_TODAY(p).click();
-    await s.step('closed', async () => { await expectFocusOnHeading(p, 'One thing, done.', t('close.today')); });
+    await s.step('closed', async () => { await expectFocusOnHeading(p, t('closed.done'), t('close.today')); });
     await SEE_DAYS(p).click();
     await s.step('days', async () => { await expectFocusOnHeading(p, DAYS_H1, t('seeDays')); });
     await p.getByRole('button', { name: 'Done' }).click();
-    await s.step('back-to-closed', async () => { await expectFocusOnHeading(p, 'One thing, done.', 'Done'); });
+    await s.step('back-to-closed', async () => { await expectFocusOnHeading(p, t('closed.done'), 'Done'); });
     await p.getByRole('button', { name: 'About' }).click();
     await s.step('about', async () => { await expectFocusOnHeading(p, 'About', 'About'); });
     await p.getByRole('button', { name: 'Done' }).click();
@@ -1262,7 +1265,7 @@ const reviewJourneys = {
   },
   'review-copy': async (s) => { // block length, the pause line, name-step hints, About (eight steps to three, not affiliated, one talk link, four privacy lines); no em dash anywhere
     const p = s.page; const SPAUSE = 'One short pause if you must, then back.';
-    await s.step('welcome', async () => { await noEmDash(p, 'welcome'); await expect(p.getByText('Write it plainly: three to five, no more.')).toBeVisible(); await p.getByRole('button', { name: 'Start', exact: true }).click(); });
+    await s.step('welcome', async () => { await noEmDash(p, 'welcome'); await expect(p.getByText(t('first.step1.d'))).toBeVisible(); await p.getByRole('button', { name: t('first.start'), exact: true }).click(); });
     await s.step('name-1', async () => { await noEmDash(p, 'name 1'); await expect(p.getByRole('img', { name: 'Step 1 of 3' })).toBeVisible(); await addItem(p, 'Ask for the raise'); await p.getByRole('button', { name: 'Next' }).click(); await p.getByRole('button', { name: 'Next' }).click(); });
     await s.step('name-3-his-words', async () => {
       await expect(p.getByText('Whatever else makes you most anxious or uncomfortable.')).toBeVisible();
@@ -1271,8 +1274,8 @@ const reviewJourneys = {
     });
     await answerAll(p, [[true, true]]);
     await s.step('pick-block-length', async () => {
-      await expect(p.getByText("At least two to three hours, unbroken, first thing, before the day gets loud. Let the rest slide; it'll still be there tomorrow.", { exact: true })).toBeVisible();
-      await expect(p.getByText('One unbroken block', { exact: false })).toHaveCount(0); await noEmDash(p, 'pick');
+      await expect(p.getByText(fmt.pickLine(false, false), { exact: true })).toBeVisible();
+      await expect(p.getByText(t('pick.small'), { exact: false })).toHaveCount(0); await noEmDash(p, 'pick');
     });
     await startBlock(s);
     await s.step('block-pause-line', async () => {

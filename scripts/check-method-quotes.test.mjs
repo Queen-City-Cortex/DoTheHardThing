@@ -61,10 +61,21 @@ describe('check:quotes', () => {
     expect(r.status).toBe(1);
     expect(r.stderr).toContain('block-two-to-three-hours: no transcript line starts with [5:17]');
   });
-  it('skips with exit 0 when there is no transcript', () => {
-    for (const r of [run([]), run([join(dir, 'missing.txt')])]) {
+  it('skips with exit 0 only when no path is set (empty counts as unset)', () => {
+    for (const r of [run([]), run([], { FERRISS_TRANSCRIPT: '', TRANSCRIPT: '' })]) {
       expect(r.status).toBe(0);
       expect(r.stdout.trim()).toBe('check:quotes skipped: no transcript (pass a path or set FERRISS_TRANSCRIPT)');
     }
+  });
+  it('fails with exit 1, naming the path, when a path is set but cannot be read', () => {
+    const missing = join(dir, 'missing.txt');
+    for (const r of [run([missing]), run([], { FERRISS_TRANSCRIPT: missing }), run([], { TRANSCRIPT: missing })]) {
+      expect(r.status).toBe(1);
+      expect(r.stdout).not.toContain('skipped');
+      expect(r.stderr).toContain(`check:quotes FAIL: cannot read the transcript at ${missing} (no such file)`);
+    }
+    const r = run([dir]);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain(`cannot read the transcript at ${dir} (it is a directory)`);
   });
 });

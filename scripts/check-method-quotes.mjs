@@ -1,5 +1,6 @@
 // check:quotes: every rule in src/method.ts that quotes the talk quotes it verbatim, on the transcript line for its ref.
-// Local only: the transcript is not in the repo, so this is not part of `npm run check`; without one it skips (exit 0).
+// Local only: the transcript is not in the repo, so this is not part of `npm run check`; with no path set it skips (exit 0),
+// and a path that is set but cannot be read fails (exit 1).
 // A transcript line starts with its timestamp in brackets, e.g. `[4:36] ... So write down those three to five things.`
 // Whitespace is normalized on both sides before comparing.
 // Usage: npm run check:quotes -- path/to/transcript.txt   (or set FERRISS_TRANSCRIPT; TRANSCRIPT is still read; see scripts/transcript.mjs)
@@ -9,6 +10,10 @@ const transcript = readTranscript(process.argv[2]);
 if (!transcript) {
   console.log(`check:quotes skipped: no transcript (${TRANSCRIPT_HINT})`);
   process.exit(0);
+}
+if (transcript.error) {
+  console.error(`check:quotes FAIL: ${transcript.error}`);
+  process.exit(1);
 }
 const { path } = transcript;
 // method.ts imports nothing and uses only erasable syntax, so Node runs it with its types stripped

@@ -25,53 +25,78 @@ const parseTalk = (raw: string): TalkLine[] => raw.split(/\r?\n/).flatMap((line)
 // checked for its words only.
 const normalize = (s: string) => s.toLowerCase().replace(/[‘’']/g, '')
   .replace(/([.?!])[.?!]*/g, ' $1 ').replace(/[^a-z0-9.?!]+/g, ' ').replace(/\s+/g, ' ').trim();
-/** The lines a quote spans, or null when its words are not in the talk in that order. Whole words only. */
-function findQuote(lines: TalkLine[], quote: string): TalkLine[] | null {
+/** The lines each occurrence of a quote spans, in talk order; empty when its words are not in the talk in that order. Whole words only. */
+function findQuote(lines: TalkLine[], quote: string): TalkLine[][] {
   const q = normalize(quote);
-  let joined = '';
+  let joined = ' ';
   const starts: number[] = [];
   for (const l of lines) { starts.push(joined.length); joined += normalize(l.text) + ' '; }
-  const at = (' ' + joined).indexOf(' ' + q + ' ');
-  if (at < 0) return null;
   const lineAt = (pos: number) => starts.filter((s) => s <= pos).length - 1;
-  return lines.slice(lineAt(at), lineAt(at + q.length - 1) + 1);
+  const hits: TalkLine[][] = [];
+  for (let at = joined.indexOf(' ' + q + ' '); at >= 0; at = joined.indexOf(' ' + q + ' ', at + 1)) {
+    hits.push(lines.slice(lineAt(at + 1), lineAt(at + q.length) + 1));
+  }
+  return hits;
 }
+/** The ref of each line a quote starts on, one per occurrence. */
+const startRefs = (lines: TalkLine[], quote: string) => findQuote(lines, quote).map((hit) => hit[0].ref);
 
 describe('the quote matcher', () => {
   const talk = parseTalk('[0:01] one two\n[0:02] three, four. Five six?\n[0:03] seven');
+  const spans = (quote: string) => findQuote(talk, quote).map((hit) => hit.map((l) => l.ref));
   it('ignores case, commas, apostrophes and spacing, not sentence ends', () => {
     expect(normalize('You’re  better,\nthan-you.')).toBe('youre better than you .');
-    expect(findQuote(talk, 'Two three, four.')?.map((l) => l.ref)).toEqual(['0:01', '0:02']);
-    expect(findQuote(talk, 'TWO   three four.')?.map((l) => l.ref)).toEqual(['0:01', '0:02']);
+    expect(spans('Two three, four.')).toEqual([['0:01', '0:02']]);
+    expect(spans('TWO   three four.')).toEqual([['0:01', '0:02']]);
   });
   it('matches whole words only', () => {
-    expect(findQuote(talk, 'two thre')).toBeNull();
-    expect(findQuote(talk, 'wo three')).toBeNull();
+    expect(spans('two thre')).toEqual([]);
+    expect(spans('wo three')).toEqual([]);
+    expect(spans('one two three, four. Five six? seven')).toEqual([['0:01', '0:02', '0:03']]); // the first and last words count
   });
   it('fails a quote cut short of the sentence end, and keeps . ? ! apart', () => {
-    expect(findQuote(talk, 'Two three.')).toBeNull();
-    expect(findQuote(talk, 'Five six.')).toBeNull();
-    expect(findQuote(talk, 'Five six?')).not.toBeNull();
+    expect(spans('Two three.')).toEqual([]);
+    expect(spans('Five six.')).toEqual([]);
+    expect(spans('Five six?')).toEqual([['0:02']]);
   });
   it('checks a fragment without end punctuation for its words', () => {
-    expect(findQuote(talk, 'Two three')).not.toBeNull();
-    expect(findQuote(talk, 'one two three')?.map((l) => l.ref)).toEqual(['0:01', '0:02']);
-    expect(findQuote(talk, 'six seven')).toBeNull(); // a fragment does not run over a sentence end
+    expect(spans('Two three')).toEqual([['0:01', '0:02']]);
+    expect(spans('one two three')).toEqual([['0:01', '0:02']]);
+    expect(spans('six seven')).toEqual([]); // a fragment does not run over a sentence end
+  });
+  it('finds every occurrence of a quote the talk says more than once, each with its start line', () => {
+    const twice = parseTalk('[0:01] Pick the one thing.\n[0:02] Then rest.\n[0:03] I repeat: pick the\n[0:04] one thing.');
+    expect(startRefs(twice, 'Pick the one thing.')).toEqual(['0:01', '0:03']);
+    expect(findQuote(twice, 'Pick the one thing.')[1].map((l) => l.ref)).toEqual(['0:03', '0:04']);
+    expect(startRefs(twice, 'the one thing.')).toEqual(['0:01', '0:03']);
+    expect(startRefs(twice, 'Then rest.')).toEqual(['0:02']);
+  });
+  it('reads only [m:ss] lines', () => {
+    expect(parseTalk('[1:02:03] an hour in\nno stamp\n[4:5] short')).toEqual([]);
+    expect(parseTalk(' [12:34] words \r\n[0:00]')).toEqual([{ ref: '12:34', text: 'words' }, { ref: '0:00', text: '' }]);
   });
 });
 
 const transcript = readTranscript();
-const talk = transcript ? parseTalk(transcript.text) : [];
+const talk = transcript?.text != null ? parseTalk(transcript.text) : [];
+// a path that is set but unreadable, or a file with no [m:ss] lines, is one clear failure, never a skip or 16 failures
+const unusable = !transcript ? null
+  : transcript.error ?? (talk.length ? null : `no [m:ss] lines found in ${transcript.path}: each line must start with its timestamp, e.g. [4:36] words`);
 const WHERE = transcript
   ? `against the transcript at ${transcript.path}`
   : 'SKIPPED: set FERRISS_TRANSCRIPT to the talk transcript file to run them. It is not in the repo, so CI skips them';
 // vitest lists skipped tests only as a count, so say why once in the run's output
 if (!transcript) console.warn(`src/copy.test.ts: quote and paraphrase-ref checks ${WHERE}.`);
 describe.skipIf(!transcript)(`copy ${WHERE}`, () => {
+  if (unusable) {
+    it('the transcript can be read and has [m:ss] lines', () => { throw new Error(unusable); });
+    return;
+  }
   it.each(entries.filter(([, e]) => e.kind === 'quote'))('quote %s is in the talk word for word, starting at its ref', (_id, e) => {
-    const hit = findQuote(talk, e.text);
-    expect(hit, `"${e.text}" is not in the transcript word for word (case, commas, apostrophes and spacing aside, ending where the talk's sentence ends). Quote it word for word, or make it kind: 'paraphrase'.`).not.toBeNull();
-    expect(e.ref, `the quote starts on the [${hit![0].ref}] line: set ref: '${hit![0].ref}'`).toBe(hit![0].ref);
+    const refs = startRefs(talk, e.text);
+    expect(refs.length, `"${e.text}" is not in the transcript word for word (case, commas, apostrophes and spacing aside, ending where the talk's sentence ends). Quote it word for word, or make it kind: 'paraphrase'.`).toBeGreaterThan(0);
+    const said = refs.length > 1 ? `the talk says it ${refs.length} times, starting on [${refs.join('], [')}]: set ref to one of them` : `the quote starts on the [${refs[0]}] line: set ref: '${refs[0]}'`;
+    expect(refs, said).toContain(e.ref);
   });
   it.each(entries.filter(([, e]) => e.kind === 'paraphrase'))('paraphrase %s points at a line of the talk', (_id, e) => {
     expect(talk.map((l) => l.ref), `ref '${e.ref}' is not a transcript timestamp: set it to the [m:ss] of the line this paraphrases`).toContain(e.ref);
@@ -109,6 +134,10 @@ export const paraphraseNoRef: CopyEntry = { kind: 'paraphrase', text: 'x' };
 export const ownRef: CopyEntry = { kind: 'own', text: 'x', ref: '4:32' };
 // @ts-expect-error a ref that is not a timestamp
 export const badRef: CopyEntry = { kind: 'quote', text: 'x', ref: 'soon' };
+// @ts-expect-error seconds need two digits
+export const shortRef: CopyEntry = { kind: 'quote', text: 'x', ref: '4:5' };
+// @ts-expect-error seconds need two digits, no more
+export const longRef: CopyEntry = { kind: 'quote', text: 'x', ref: '4:055' };
 
 // ---- required lines ----
 // the screen as plain text: tags out, React's escapes of & < > " ' undone
