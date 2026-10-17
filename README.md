@@ -35,6 +35,7 @@ npm run dev        # http://localhost:5173
 ## Test, lint, build
 
 ```bash
+npm run check      # the test, lint, build and dist steps below in one command (plus typecheck, a public hygiene check and the AGENTS.md check), as CI runs it
 npm test           # Vitest: app logic, storage, reminders, contrast, analytics client, the Worker
 npm run lint       # ESLint
 npm run build      # tsc -b && vite build -> ./dist
@@ -42,7 +43,7 @@ npm run check:dist # after a build: the service worker precaches every file the 
 npm run preview    # serve ./dist locally (http://127.0.0.1:4173)
 ```
 
-End-to-end journeys (headless Chromium against a production build) live in [`e2e/`](e2e/README.md). To retake the screenshots in `docs/screenshots/`, start `npm run preview` and run `node scripts/screens.mjs` (set `CHROMIUM_PATH` to use your own Chromium).
+End-to-end journeys (headless Chromium against a production build) live in [`e2e/`](e2e/README.md): `npm run build && npm run journeys`. To retake the screenshots in `docs/screenshots/`, start `npm run preview` and run `node scripts/screens.mjs` (set `CHROMIUM_PATH` to use your own Chromium).
 
 ## Deploy
 
@@ -58,7 +59,7 @@ Wrangler is not a project dependency: `npx` fetches the current version when you
 
 ### Automatic deploy
 
-Every push to `master` runs [`.github/workflows/ci.yml`](.github/workflows/ci.yml). Its `check` job runs lint, tests, build and `check:dist`. When `check` passes, the `deploy` job builds again and runs `wrangler deploy`, then smoke-checks `https://dothehardthing.app` (the page is 200 and serves the new build's entry script, `GET /api/event` answers 405 from the Worker, and `og-image.png` is a 200). Pull requests and forks never deploy. Deploys are serialised (concurrency group `deploy-production`), the job has `contents: read` only, actions are pinned to commit SHAs, and Node comes from `.nvmrc`. Merging to `master` therefore deploys the site.
+Every push to `master` runs [`.github/workflows/ci.yml`](.github/workflows/ci.yml). Its `check` job runs `npm run check` (typecheck, lint, tests, build, `check:dist`, a public hygiene check and the AGENTS.md check). Its `journeys` job then runs the end-to-end journeys against the build: 8 of them on a pull request, all of them on `master`. When `check` passes, the `deploy` job builds again and runs `wrangler deploy`, then smoke-checks `https://dothehardthing.app` (the page is 200 and serves the new build's entry script, `GET /api/event` answers 405 from the Worker, and `og-image.png` is a 200). Pull requests and forks never deploy. Deploys are serialised (concurrency group `deploy-production`), the job has `contents: read` only, actions are pinned to commit SHAs, and Node comes from `.nvmrc`. Merging to `master` therefore deploys the site.
 
 **GitHub secrets** (repository **Settings > Secrets and variables > Actions > Repository secrets > New repository secret**):
 

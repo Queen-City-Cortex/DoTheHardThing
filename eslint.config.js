@@ -26,9 +26,9 @@ export default tseslint.config(
     },
   },
   {
-    // the check scripts run in Node (older scripts and journeys evaluate browser code inside page.evaluate and are not linted yet)
+    // the check scripts and the journey runner run in Node (older scripts and journeys evaluate browser code inside page.evaluate and are not linted yet)
     extends: [js.configs.recommended],
-    files: ['scripts/check-*.mjs', 'scripts/**/*.test.mjs'],
+    files: ['scripts/check*.mjs', 'scripts/verify-live.mjs', 'scripts/**/*.test.mjs', 'e2e/run.mjs'],
     languageOptions: { ecmaVersion: 2023, sourceType: 'module', globals: globals.node },
   },
 )

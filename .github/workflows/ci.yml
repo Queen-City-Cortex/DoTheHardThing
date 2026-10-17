@@ -11,6 +11,7 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -18,10 +19,37 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - run: npm run lint
-      - run: npm test
+      # the same loop an agent runs locally: public hygiene, AGENTS.md check, typecheck, lint, unit tests, build, dist check
+      - run: npm run check
+
+  # Pull requests run the fast subset of journeys (FAST in e2e/run.mjs), master runs every journey.
+  # The deploy job does not wait for this job.
+  journeys:
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
       - run: npm run build
-      - run: npm run check:dist
+      - name: Journeys
+        run: node e2e/run.mjs --serve --workers 2 ${{ github.event_name == 'pull_request' && '--fast' || '' }}
+        env:
+          VDT_PORT: '4317'
+          VDT_EVIDENCE: ${{ runner.temp }}/e2e
+          VDT_RUN_ID: ci
+      - name: Keep the evidence of a failed journey
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: journey-evidence
+          path: ${{ runner.temp }}/e2e/ci
+          retention-days: 7
 
   # Deploys to Cloudflare only after `check` passes, and only for a push to master in
   # this repository: never for pull requests, never for forks (forks have no secrets anyway).

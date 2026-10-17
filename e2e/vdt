@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Verification harness for Do The Hard Thing. Usage:
-#   vdt launch | doctor | journey <name> [more names] | cleanup | list
+#   VDT_PORT=<your port> vdt launch | doctor | journey <name> [more names] | VDT_PORT=<your port> cleanup | list
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/.." && pwd)"
@@ -11,6 +11,11 @@ export VDT_URL="http://127.0.0.1:$PORT"
 export VDT_EVIDENCE="${VDT_EVIDENCE:-$TMP/do-the-hard-thing-e2e}"
 SETSID=""; command -v setsid >/dev/null 2>&1 && SETSID=setsid
 cmd="${1:-}"; shift || true
+# launch and cleanup start or stop a server, so they need a port of your own: the default 4317 is shared by every agent
+# on the machine, and a cleanup on it stops someone else's server
+if { [ "$cmd" = launch ] || [ "$cmd" = cleanup ]; } && [ -z "${VDT_PORT:-}" ]; then
+  echo "VDT_PORT is not set: pick any free port above 4400 and use it for every command, e.g. export VDT_PORT=\$((4400 + RANDOM % 500)) (the default 4317 is shared by every agent on this machine)" >&2; exit 2
+fi
 case "$cmd" in
   launch)
     cd "$REPO"

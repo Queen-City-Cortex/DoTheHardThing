@@ -7,10 +7,11 @@ The harness is `e2e/vdt` (bash) plus `e2e/drive.mjs` (Playwright journeys). It u
 ## Launch
 
 ```bash
+export VDT_PORT=$((4400 + RANDOM % 500))   # any free port above 4400 of your own, the same for every command
 e2e/vdt launch
 ```
 
-This runs `npm ci` if needed, installs Chromium, runs `npm run build` (tsc and vite build, which generates `dist/sw.js`), then starts `vite preview` on `127.0.0.1:$VDT_PORT` (default **4317**, `--strictPort`). It writes the PID to `$TMPDIR/vdt-$PORT.pid` and the log to `$TMPDIR/vdt-$PORT.log` (`/tmp` when `TMPDIR` is unset). **Ready** = it prints `ready http://127.0.0.1:4317 (pid N)`. That happens after `/` serves `<div id="root">`. The launch refuses to run if the port is already busy. Port 4173 is `vite preview`'s default, so the harness avoids it. Use another port with `VDT_PORT=4400 vdt launch` (set the same `VDT_PORT` for every later command).
+This runs `npm ci` if needed, installs Chromium, runs `npm run build` (tsc and vite build, which generates `dist/sw.js`), then starts `vite preview` on `127.0.0.1:$VDT_PORT` (default **4317**, `--strictPort`). It writes the PID to `$TMPDIR/vdt-$PORT.pid` and the log to `$TMPDIR/vdt-$PORT.log` (`/tmp` when `TMPDIR` is unset). **Ready** = it prints `ready http://127.0.0.1:4317 (pid N)`. That happens after `/` serves `<div id="root">`. The launch refuses to run if the port is already busy. Port 4173 is `vite preview`'s default, so the harness avoids it. `launch` and `cleanup` refuse to run (exit 2) when `VDT_PORT` is unset: the default 4317 is shared by every agent on the machine, and a cleanup on it would stop someone else's server. `doctor`, `journey` and `list` still default to 4317, so set the same `VDT_PORT` for every command.
 
 Relaunch after any source change. The preview serves `dist/`, not `src/`.
 
@@ -30,6 +31,8 @@ $S/vdt list                                  # journey names
 $S/vdt journey first-visit start-end-block   # one or more; exit 0 only if all PASS
 $S/vdt journey $($S/vdt list)                # everything
 ```
+
+In parallel: `node e2e/run.mjs` runs each journey in its own `drive.mjs` child, slowest first, with `--workers N` (default half the CPUs). `npm run journeys` adds `--serve`: it serves the existing `dist/` on `VDT_PORT` itself (refusing a `dist/` older than the sources: run `npm run build` first) and stops it afterwards. `npm run journeys:fast` runs only `FAST` in `e2e/run.mjs`, the 8 journeys CI runs on pull requests; `npm run journeys -- <names>` runs the ones named. A journey that runs longer than `VDT_JOURNEY_TIMEOUT_MS` (default 120000) is killed and fails with `timeout`. SIGINT and SIGTERM stop the preview and every child.
 
 Each journey uses a fresh `chromium.launch()` and `newContext()` (390×844, en-US, America/New_York). It then runs `page.clock.install` and `pauseAt(<start>)` before `goto`. Time moves only through `clock.runFor` (timers fire, as in the block countdown), `clock.fastForward` (a jump, as in a long step-away) or `clock.setSystemTime` followed by `reload()` (a new day). Start times are in `START` in `e2e/drive.mjs` (the default is 07:30 on 2026-10-14; the late hour is 11:00 local).
 
@@ -68,14 +71,15 @@ Proof standards:
 ## Cleanup
 
 ```bash
-e2e/vdt cleanup
+e2e/vdt cleanup   # with the VDT_PORT you launched on
 ```
 
 This kills only the process group in `$TMPDIR/vdt-$PORT.pid` (never by name) and deletes the pid file. Browsers close at the end of each journey. Evidence and `dist/` are left alone. Run cleanup after failed iterations too.
 
 ## Helpers
 
-- `e2e/vdt {launch|doctor|journey <names…>|list|cleanup}`: executable bash, with the env vars `VDT_PORT`, `VDT_EVIDENCE` and `VDT_RUN_ID`.
+- `e2e/vdt {launch|doctor|journey <names…>|list|cleanup}`: executable bash, with the env vars `VDT_PORT` (required for `launch` and `cleanup`), `VDT_EVIDENCE` and `VDT_RUN_ID`.
+- `e2e/run.mjs`: the parallel runner behind `npm run journeys`, `journeys:fast` and `check:full`.
 - `e2e/drive.mjs`: the journeys, run by `vdt journey`. Run it with `node` directly only if `VDT_URL` is set.
 
 Feature recipes and what each proves: [features/README.md](features/README.md). Keep the map in sync when journeys change.

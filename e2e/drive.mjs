@@ -6,6 +6,10 @@ import crypto from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 
+// Journey times are America/New_York wall-clock strings (see the context timezone below). `new Date('2026-10-14T23:30:00')` reads them
+// in the host timezone, so pin it: on a UTC runner the midnight journeys otherwise start at 19:30 and never cross midnight.
+process.env.TZ = 'America/New_York';
+
 const URL = process.env.VDT_URL ?? 'http://127.0.0.1:4317';
 const RUN = process.env.VDT_RUN_ID ?? new Date().toISOString().replace(/[:.]/g, '-');
 const ROOT = path.join(process.env.VDT_EVIDENCE ?? path.join(os.tmpdir(), 'do-the-hard-thing-e2e'), RUN);

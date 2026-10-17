@@ -14,16 +14,25 @@
     "url": "https://github.com/Queen-City-Cortex/DoTheHardThing/issues"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22.18"
   },
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "check:dist": "node scripts/check-dist.mjs",
+    "typecheck": "tsc -b",
     "lint": "eslint .",
-    "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "check:dist": "node scripts/check-dist.mjs",
+    "check:public-hygiene": "node scripts/check-public-hygiene.mjs",
+    "check:agents-md": "node scripts/check-agents-md.mjs",
+    "check:fast": "node scripts/check.mjs fast",
+    "check": "node scripts/check.mjs",
+    "check:full": "node scripts/check.mjs full",
+    "journeys": "node e2e/run.mjs --serve",
+    "journeys:fast": "node e2e/run.mjs --serve --fast",
+    "verify:live": "node scripts/verify-live.mjs",
+    "preview": "vite preview"
   },
   "dependencies": {
     "@fontsource-variable/instrument-sans": "^5.3.0",
