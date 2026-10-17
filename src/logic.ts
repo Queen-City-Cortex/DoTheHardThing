@@ -42,7 +42,7 @@ export interface Day {
 }
 
 // ---------- dates ----------
-export function dayKey(d: Date = new Date()): string {
+export function dayKey(d: Date): string {
   const p = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
@@ -243,7 +243,7 @@ export function shouldRollOver(day: Day, screen: string, now: number): boolean {
 }
 
 /** A fresh record for a date: what a new day, and starting today over, begin from. */
-export function newDay(date: string, now = Date.now()): Day {
+export function newDay(date: string, now: number): Day {
   return { date, openedAt: now, items: [], chosenId: null, block: null, gotBlock: null, didIt: null, doneText: null, closed: false };
 }
 /** Another tab's copy of the open day wins over this tab's when it is closed, this tab's is not, and this tab's

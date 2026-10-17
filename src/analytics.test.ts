@@ -35,4 +35,10 @@ describe('track', () => {
     const { e, sent, mem } = env(); mem.set('one-thing:events', '{nope'); track('started', e);
     expect(sent).toEqual(['{"event":"started"}']);
   });
+  it('treats a stored value of the wrong shape as a fresh day', () => {
+    for (const raw of ['null', '[]', '"started"', '{"date":"2026-10-14","sent":"started"}']) {
+      const { e, sent, mem } = env(); mem.set('one-thing:events', raw); track('started', e);
+      expect(sent, raw).toEqual(['{"event":"started"}']);
+    }
+  });
 });
