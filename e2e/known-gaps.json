@@ -1,0 +1,20 @@
+[
+  {
+    "id": "reload-mid-flow-restarts-step",
+    "journey": "gap-reload-keeps-step",
+    "why": "A reload during Name (step 2 or 3) or Ask (item 2 or later) loses the position: Name's step and Ask's item index are component state in src/App.tsx, and a stored plan day opens on Welcome (resume in src/state.ts). The items and answers are kept, but the user lands on Welcome (on day one, the first-visit welcome) and has to step through again. reload-mid-naming asserts today's behavior; e2e/features/resilience.md describes it.",
+    "owner": "repo owner",
+    "expires": "2026-11-18",
+    "fixed_by": "a product call: whether a reload should keep the Name step and Ask item (for example by keeping them in the screen state and the store); if yes, reload-mid-naming changes with it",
+    "fails_with": "gap open (2 of 2): a reload keeps the step the user was on"
+  },
+  {
+    "id": "back-lands-on-first-substep",
+    "journey": "gap-back-to-last-substep",
+    "why": "Back from the first Ask item opens Name on its first step (What have you been putting off?) rather than the last one the user came from, and Look again on Nothing got a yes opens Ask on its first item rather than the last: both components start at step 0 when they mount (src/App.tsx). Recorded in e2e/features/first-visit.md and pick-and-start.md Gotchas.",
+    "owner": "repo owner",
+    "expires": "2026-11-18",
+    "fixed_by": "a product call: whether Back and Look again should return to the sub-step the user came from (Name's last step, Ask's last item); if yes, the stepBack screens carry the step to open on",
+    "fails_with": "gap open (2 of 2): Back from the first Ask item returns to the step the user came from"
+  }
+]

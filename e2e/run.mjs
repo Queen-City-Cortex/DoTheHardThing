@@ -44,6 +44,8 @@ const TIMEOUT_MS = Number(process.env.VDT_JOURNEY_TIMEOUT_MS) || 120000;
 const all = execFileSync(process.execPath, [path.join(HERE, 'drive.mjs'), '--list'], { cwd: REPO, encoding: 'utf8' }).trim().split('\n');
 const names = args.length ? args : fast ? FAST : all;
 const unknown = names.filter((n) => !all.includes(n));
+const gapNames = unknown.filter((n) => n.startsWith('gap-'));
+if (gapNames.length) console.error(`${gapNames.join(', ')}: gap-* names are known-gap journeys, left out of the suite on purpose; run them with \`node e2e/gaps.mjs\` (\`npm run gaps\`) or \`e2e/vdt journey <name>\` (see Known gaps in e2e/README.md)`);
 if (unknown.length) { console.error(`unknown journey(s): ${unknown.join(', ')}; see \`node e2e/drive.mjs --list\``); process.exit(2); }
 
 // the preview and every drive.mjs child run in their own process group (detached), so a kill reaches their Chromium too

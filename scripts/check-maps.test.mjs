@@ -38,7 +38,7 @@ describe('check:maps', () => {
   it('passes an unchanged copy', () => {
     const r = run();
     expect(r.status, r.out).toBe(0);
-    expect(r.out).toMatch(/maps OK: 50 journeys, 9 maps/);
+    expect(r.out).toMatch(/maps OK: 56 journeys, 9 maps/);
   });
   it('fails a renamed key whose meta.id was left behind', () => {
     const r = run(({ drive }) => drive("'two-tabs': journey({ id: 'two-tabs'", "'two-tabs-stale': journey({ id: 'two-tabs'"));

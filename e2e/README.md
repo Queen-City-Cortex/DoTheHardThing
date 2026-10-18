@@ -55,6 +55,35 @@ To add a journey, add an entry to `J` (and `START` if it needs a different start
 
 `vdt journey` always points at the local preview (it exports `VDT_URL` itself). To drive the deployed site run the script directly: `VDT_URL=https://dothehardthing.app VDT_RUN_ID=live node $S/drive.mjs $(node $S/drive.mjs --list)`. Whenever the URL is not `http://127.*`, every journey answers `**/api/event` locally, so a live run never adds to the real analytics counts. The full suite takes about 10 to 15 minutes: start it detached (`nohup … &`, log to a file) so closing your terminal does not kill the preview server or the run, and poll the log. Allow a retry after about 30 s right after a deploy (propagation).
 
+## Known gaps
+
+`e2e/known-gaps.json` lists the gaps that wait on a decision by the owner, each with a `gap-*` journey in `drive.mjs` that asserts the behavior we want, so the journey fails while the gap is open. It is for owner-blocked gaps only: a bug gets fixed, not registered. `vdt list` (and so `node e2e/run.mjs`, `npm run journeys` and CI) leaves the `gap-*` journeys out; `node e2e/drive.mjs --list-gaps` lists them, and `vdt journey gap-<name>` still runs one by name.
+
+Each entry has `id`, `journey`, `why` (what is wrong today and where), `owner`, `expires` (YYYY-MM-DD), `fixed_by` (what a fix is) and `fails_with` (the start of the journey's own error, `gap open (N of M): ...`, with its count: N wanted behaviors still missing of the M the journey checks, then words the journey writes; never a Playwright locator rendering). `node e2e/gaps.mjs` runs each entry's journey and inverts it:
+- `XFAIL`: it failed with its own `gap open (N of M): ...` error and that contains `fails_with`, so the gap is open as registered (the only outcome that passes);
+- `STALE`: it passed, so the gap is fixed: delete the entry and move the journey into the suite (renamed, without `gap-`);
+- `WRONG`: it failed for another reason (including another count), timed out, or died before writing `result.json`;
+- `EXPIRED`: today is past `expires` (it is not run): fix it, or decide again and move the date with a reason.
+
+A gap that is half fixed (one of its two wanted behaviors now holds) reads `WRONG`, not `XFAIL`: the journey says `gap open (1 of 2)` where the entry says `(2 of 2)`, and the line adds that the gap moved. If that part was fixed on purpose, the maintainer updates the entry: the new count in `fails_with` (and the words of a part still open), and `why` for what is still wrong. `scripts/gaps.test.mjs` checks that each real `fails_with` names words its journey writes and that M is its number of `gap.want` calls.
+
+A malformed entry, an entry whose journey is missing and a `gap-*` journey with no entry also fail the run. Run it with `npm run gaps` (serves the existing `dist/` on `VDT_PORT` itself, like `npm run journeys`), or `node e2e/gaps.mjs [ids…]` against a running preview (`VDT_URL`, or `VDT_PORT` after `vdt launch`). `GAPS_TODAY=YYYY-MM-DD` sets the date (anything else is refused), `GAPS_FILE` another registry; `scripts/gaps.test.mjs` covers every outcome with a fake drive script (`GAPS_DRIVE`), no browser. Local only: run it by hand or from a scheduled job of your own; the repo has no scheduled workflow, so an `EXPIRED` entry is seen only when someone runs it.
+
+## Mutation check
+
+`scripts/mutate.mjs` asks whether the safety net goes red when a behavior breaks. Each row of its table is a small edit to `src/` (the 2h default, a late cutoff, Back on Ask, the brand in `src/copy.ts`, a reducer step, ...), applied in a copy under `$TMPDIR/mutate-<port>` (`MUT_DIR`; `<port>` is `VDT_PORT`, or the process id without the journeys layer), never in your checkout. Each row goes through four layers, in their own columns: lint (`eslint .` and `scripts/check-text.mjs`), types (`tsc -b`), unit (`vitest run`) and journeys (the copy is built, served on `VDT_PORT` and the row's journeys run one process each). A row is `KILLED` when any layer fails (the result names which, and each failed column says what caught it: eslint rule ids or the check-text line, the files tsc reports, the failing test files, the failing journeys), `SURVIVED` when all pass (a blind spot to close, or a wrong row), `NOT-APPLIED` when a find string no longer occurs exactly once. The unmutated copy must pass lint, types and unit first, and a journey that also fails on the unmutated build is not counted as a catch. `VDT_PORT` must be a free port above 4400; the preview and every child run in their own process group and are killed on exit, Ctrl-C and SIGTERM, and before each build's first journey the served `/index.html` must equal the copy's `dist/index.html`, or the run stops (another server answers on the port).
+
+```bash
+VDT_PORT=<your port> npm run mutate                           # every row, every layer: 15 to 30 minutes, run it detached
+VDT_PORT=<your port> node scripts/mutate.mjs ask-no-back --fast # one row, stop at the first layer that catches it
+node scripts/mutate.mjs --layers lint,types,unit                # no browser, no port needed
+node scripts/mutate.mjs --check                                 # only check the table against this tree
+```
+
+The `quote-cut` row (a talk quote loses a word) is caught only by the transcript check, so set `FERRISS_TRANSCRIPT` to the talk transcript when you run it, or that one row reads SURVIVED (the transcript is not in the repo). So every row reads KILLED only with `FERRISS_TRANSCRIPT` set. It writes `$MUT_OUT` (default `$TMPDIR/mutate-<port>-results.json`; journey evidence goes to `$TMPDIR/mutate-<port>-evidence`), so two runs on different ports never clobber each other, prints a markdown table and `killed N, survived M, not-applied K`, and exits 1 when a row survived or did not apply. Local only: run it by hand or from a scheduled job of your own; the repo has no scheduled workflow, and it is not part of `npm run check` or CI. `scripts/mutate.test.mjs` (in `npm test`) keeps the table from rotting: every find string occurs once, every journey it names exists, ids are unique, and a row with no journey says which layer alone can see it. When a journey changes, run the rows that name it.
+
+`npm run vacuous` (`scripts/vacuous.mjs`) greps `drive.mjs` for assertions that cannot fail (a swallowed click, a click only if the button exists, `toHaveText(/./)`, absent text no source has). It is a lower bound, not an inventory.
+
 ## Evidence
 
 Every run writes to `$VDT_EVIDENCE/<run-id>/<journey>/`. The default root is `do-the-hard-thing-e2e/` under your temp directory (`$TMPDIR`, or `/tmp`), outside the repo and kept by cleanup. Override it with `VDT_EVIDENCE` and `VDT_RUN_ID`. Each folder holds:
@@ -81,5 +110,6 @@ This kills only the process group in `$TMPDIR/vdt-$PORT.pid` (never by name) and
 - `e2e/vdt {launch|doctor|journey <names…>|list|cleanup}`: executable bash, with the env vars `VDT_PORT` (required for `launch` and `cleanup`), `VDT_EVIDENCE` and `VDT_RUN_ID`.
 - `e2e/run.mjs`: the parallel runner behind `npm run journeys`, `journeys:fast` and `check:full`.
 - `e2e/drive.mjs`: the journeys, run by `vdt journey`. Run it with `node` directly only if `VDT_URL` is set.
+- `e2e/gaps.mjs`: the known-gaps runner behind `npm run gaps` (see Known gaps above); `e2e/known-gaps.json` is its registry.
 
 Feature recipes and what each proves: [features/README.md](features/README.md). `npm run check:maps` (part of `npm run check:fast`) fails when the maps and the journeys' meta disagree, and says how to fix it.
