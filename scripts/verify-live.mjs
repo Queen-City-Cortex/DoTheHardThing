@@ -1,14 +1,15 @@
 // verify:live: read-only checks of a deployed site. GET only; it never POSTs to /api/event, so it adds
 // nothing to the anonymous counts. Usage:
-//   SITE=https://dothehardthing.app node scripts/verify-live.mjs [--retries N] [--www | --require-www]   (default SITE is the production URL)
+//   SITE=https://dothehardthing.app node scripts/verify-live.mjs [--retries N] [--post-deploy] [--www | --require-www]   (default SITE is the production URL)
 // Checks (FAIL exits 1): / is 200 with the root div; when dist/index.html exists, the live page serves the same hashed
 // entry script (so this is the build you just made); GET /api/event is 405 (the Worker answers, not the SPA fallback);
 // /og-image.png is image/png with the same bytes as public/og-image.png; /sw.js is served (and equals dist/sw.js when
 // dist exists). INFO lines report the headers left out on purpose (LEFT_OUT in scripts/headers-policy.mjs).
 // Checks of this build's files (the manifest; the headers on /, which must equal what dist/_headers gives `/`, or
-// public/_headers without a dist, content-type aside, compared per name with whitespace collapsed) need the live site to serve this build: when its entry script equals
-// dist/index.html's, a mismatch is a FAIL; when it does not yet (or there is no dist to compare), they print PENDING,
-// which never fails the run on its own (the entry script check above still does).
+// public/_headers without a dist, content-type aside, compared per name with whitespace collapsed) are strict only with
+// --post-deploy ("I just deployed this build; live must now serve what dist says"): then a mismatch is a FAIL. Without
+// it a mismatch prints PENDING, which never fails the run on its own, so the checks can run against the current live
+// site before a deploy. The entry script cannot tell: a change to _headers or the manifest alone leaves it the same.
 // --www (opt in; CI does not pass it): GET https://www.<SITE host> `/` and `/?x=1` without following redirects and want a
 // 301 to SITE plus the same path and query (docs/www-redirect.md). Only when SITE is the production apex; another SITE
 // skips it with a note. The www origin can be overridden with WWW_SITE (the tests point it at a local server). A www that
@@ -24,6 +25,7 @@ const SITE = (process.env.SITE ?? SITE_URL).replace(/\/$/, '');
 const ri = process.argv.indexOf('--retries');
 const RETRIES = ri > 0 ? Number(process.argv[ri + 1]) || 0 : 0;
 const WAIT_MS = 15_000;
+const POST_DEPLOY = process.argv.includes('--post-deploy');
 const REQUIRE_WWW = process.argv.includes('--require-www');
 const WWW = REQUIRE_WWW || process.argv.includes('--www');
 const APEX = new URL(SITE_URL).host;
@@ -44,13 +46,11 @@ async function round() {
   else if (!html.includes('<div id="root">')) fail('GET / is 200 but has no <div id="root">: not the app shell');
   else ok('GET / 200 with <div id="root">');
   const liveEntry = html.match(/assets\/index-[\w-]+\.js/)?.[0];
-  let serves = null; // true: live serves this build; false: another build; null: no dist to compare
   if (existsSync('dist/index.html')) {
     const localEntry = readFileSync('dist/index.html', 'utf8').match(/assets\/index-[\w-]+\.js/)?.[0];
     if (!localEntry) fail('dist/index.html has no assets/index-*.js entry script');
     else if (liveEntry !== localEntry) fail(`live entry ${liveEntry ?? '(none)'} != local dist ${localEntry}: the live site is not serving this build (not deployed yet, or a stale edge; retry with --retries 4)`);
     else ok(`live entry ${liveEntry} equals dist/index.html`);
-    serves = Boolean(localEntry) && liveEntry === localEntry;
   } else ok(`live entry ${liveEntry ?? '(none)'} (no local dist to compare; run npm run build first to prove which build is live)`);
 
   const api = await get('/api/event');
@@ -69,18 +69,18 @@ async function round() {
   else if (existsSync('dist/sw.js') && !sw.body.equals(readFileSync('dist/sw.js'))) fail('live sw.js differs from dist/sw.js: the precache list served is not this build\'s');
   else ok(`sw.js 200${existsSync('dist/sw.js') ? ', equal to dist/sw.js' : ''}`);
 
-  // A check of this build's files: FAIL only once the live site serves this build, PENDING before
+  // A check of this build's files: a mismatch is a FAIL with --post-deploy, PENDING without it
   const ofBuild = (what, mismatch, okMsg) => {
     if (!mismatch) ok(okMsg);
-    else if (serves) fail(mismatch);
-    else pendings.push(`${what}: ${serves === null ? 'no local dist to compare (run npm run build first)' : 'live does not serve this build yet'}`);
+    else if (POST_DEPLOY) fail(mismatch);
+    else pendings.push(`${what}: ${mismatch}; run with --post-deploy after the deploy`);
   };
 
   const mf = await get('/manifest.webmanifest');
   const wantMf = existsSync('dist/manifest.webmanifest') ? readFileSync('dist/manifest.webmanifest') : null;
   const themeOf = (buf) => { try { return JSON.parse(buf.toString('utf8')).theme_color; } catch { return '(not JSON)'; } };
   ofBuild('manifest.webmanifest',
-    !wantMf ? 'no dist/manifest.webmanifest'
+    !wantMf ? 'no dist/manifest.webmanifest to compare with (run npm run build first)'
       : mf.res.status !== 200 ? `GET /manifest.webmanifest is ${mf.res.status}, want 200`
         : !mf.body.equals(wantMf) ? `live manifest.webmanifest (theme_color ${themeOf(mf.body)}, sha ${sha(mf.body)}) != dist/manifest.webmanifest (theme_color ${themeOf(wantMf)}, sha ${sha(wantMf)}): a stale deploy` : null,
     'manifest.webmanifest 200, equal to dist/manifest.webmanifest');

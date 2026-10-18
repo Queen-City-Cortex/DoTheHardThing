@@ -64,61 +64,80 @@ function run(cwd, env, args = []) {
 }
 
 describe('verify:live', () => {
-  it('passes when the fake site serves this build, with GET only', async () => {
+  it('passes when the fake site serves this build, with GET only, with and without --post-deploy', async () => {
     const s = await site();
-    const r = await run(localDist(), { SITE: s.url });
-    expect(r.out).toContain('OK    manifest.webmanifest 200, equal to dist/manifest.webmanifest');
-    expect(r.out).toContain('OK    / gets the 3 headers dist/_headers gives it (X-Frame-Options, Referrer-Policy, Cache-Control)');
-    expect(r.out).toContain('INFO  / has no strict-transport-security, left out on purpose');
-    expect(r.out).not.toContain('PENDING');
-    expect(r.status).toBe(0);
-    expect(s.methods.length).toBeGreaterThan(4);
+    for (const args of [[], ['--post-deploy']]) {
+      const r = await run(localDist(), { SITE: s.url }, args);
+      expect(r.out).toContain('OK    manifest.webmanifest 200, equal to dist/manifest.webmanifest');
+      expect(r.out).toContain('OK    / gets the 3 headers dist/_headers gives it (X-Frame-Options, Referrer-Policy, Cache-Control)');
+      expect(r.out).toContain('INFO  / has no strict-transport-security, left out on purpose');
+      expect(r.out).not.toContain('PENDING');
+      expect(r.out).not.toContain('FAIL');
+      expect(r.status).toBe(0);
+    }
+    expect(s.methods.length).toBeGreaterThan(8);
     expect(new Set(s.methods)).toEqual(new Set(['GET']));
   });
-  it('fails when it serves this build but the manifest differs', async () => {
-    const s = await site({ '/manifest.webmanifest': { status: 200, headers: {}, body: JSON.stringify({ theme_color: '#1f2329' }) } });
+
+  // the live site before the deploy of a change to _headers or the manifest alone: the same entry script (no JS
+  // changed), the old headers and the old manifest
+  const currentLive = () => site({
+    '/': { status: 200, headers: { 'content-type': 'text/html', 'cache-control': 'no-cache' }, body: page('assets/index-THIS.js') },
+    '/manifest.webmanifest': { status: 200, headers: {}, body: JSON.stringify({ theme_color: '#1f2329' }) },
+  });
+  it('reports the new checks PENDING and exits 0 against the current live site without --post-deploy', async () => {
+    const s = await currentLive();
     const r = await run(localDist(), { SITE: s.url });
-    expect(r.status).toBe(1);
+    expect(r.out).toContain('OK    live entry assets/index-THIS.js equals dist/index.html');
+    expect(r.out).toContain('PENDING manifest.webmanifest: live manifest.webmanifest (theme_color #1f2329');
+    expect(r.out).toContain('PENDING headers on /: / does not get what dist/_headers gives it: X-Frame-Options: (none), want DENY; Referrer-Policy: (none), want strict-origin-when-cross-origin; run with --post-deploy after the deploy');
+    expect(r.out).not.toContain('FAIL');
+    expect(r.out).toContain('(2 pending)');
+    expect(r.status).toBe(0);
+    expect(new Set(s.methods)).toEqual(new Set(['GET']));
+  });
+  it('fails the same site with --post-deploy, GET only', async () => {
+    const s = await currentLive();
+    const r = await run(localDist(), { SITE: s.url }, ['--post-deploy']);
     expect(r.out).toContain('FAIL  live manifest.webmanifest (theme_color #1f2329');
     expect(r.out).toContain('!= dist/manifest.webmanifest (theme_color #f4f3ef');
-  });
-  it('reports the manifest PENDING, not FAIL, when the site serves another build', async () => {
-    const s = await site({
-      '/': { status: 200, headers: {}, body: page('assets/index-OTHER.js') },
-      '/manifest.webmanifest': { status: 200, headers: {}, body: '{}' },
-    });
-    const r = await run(localDist(), { SITE: s.url });
-    expect(r.out).toContain('PENDING manifest.webmanifest: live does not serve this build yet');
-    expect(r.out).not.toContain('FAIL  live manifest');
-    // the entry script check still fails a run before the deploy, as it always did
-    expect(r.out).toContain('FAIL  live entry assets/index-OTHER.js != local dist assets/index-THIS.js');
+    expect(r.out).toContain('FAIL  / does not get what dist/_headers gives it: X-Frame-Options: (none), want DENY; Referrer-Policy: (none), want strict-origin-when-cross-origin');
+    expect(r.out).not.toContain('PENDING');
     expect(r.status).toBe(1);
     expect(new Set(s.methods)).toEqual(new Set(['GET']));
   });
-  it('reports PENDING and passes when there is no local dist to compare', async () => {
-    const s = await site({ '/manifest.webmanifest': { status: 200, headers: {}, body: '{}' } });
-    const r = await run(localDist({ dist: false }), { SITE: s.url });
-    expect(r.out).toContain('PENDING manifest.webmanifest: no local dist to compare');
-    expect(r.status).toBe(0);
-  });
-  it('fails when it serves this build but a header on / differs or is missing', async () => {
+  it('with --post-deploy fails when a header on / differs or is missing', async () => {
     const s = await site({ '/': { status: 200, headers: { ...ROOT, 'x-frame-options': 'SAMEORIGIN', 'referrer-policy': undefined }, body: page('assets/index-THIS.js') } });
-    const r = await run(localDist(), { SITE: s.url });
+    const r = await run(localDist(), { SITE: s.url }, ['--post-deploy']);
     expect(r.status).toBe(1);
     expect(r.out).toContain('FAIL  / does not get what dist/_headers gives it: X-Frame-Options: SAMEORIGIN, want DENY; Referrer-Policy: (none), want strict-origin-when-cross-origin');
   });
   it('never fails on extra headers, and compares names case-insensitively and values with whitespace collapsed', async () => {
     const s = await site({ '/': { status: 200, headers: { ...ROOT, 'referrer-policy': undefined, 'Referrer-Policy': 'strict-origin-when-cross-origin', 'cache-control': '  no-cache ', server: 'edge', 'x-extra': '1' }, body: page('assets/index-THIS.js') } });
-    const r = await run(localDist(), { SITE: s.url });
+    const r = await run(localDist(), { SITE: s.url }, ['--post-deploy']);
     expect(r.out).toContain('OK    / gets the 3 headers');
     expect(r.status).toBe(0);
   });
-  it('reports the headers PENDING when the site serves another build', async () => {
-    const s = await site({ '/': { status: 200, headers: { 'content-type': 'text/html' }, body: page('assets/index-OTHER.js') } });
-    const r = await run(localDist(), { SITE: s.url });
-    expect(r.out).toContain('PENDING headers on /: live does not serve this build yet');
-    expect(r.out).not.toContain('FAIL  / does not get');
-    expect(new Set(s.methods)).toEqual(new Set(['GET']));
+  it('keeps the entry script check as it was: another build fails, with or without --post-deploy', async () => {
+    const s = await site({ '/': { status: 200, headers: ROOT, body: page('assets/index-OTHER.js') } });
+    for (const args of [[], ['--post-deploy']]) {
+      const r = await run(localDist(), { SITE: s.url }, args);
+      expect(r.out).toContain('FAIL  live entry assets/index-OTHER.js != local dist assets/index-THIS.js');
+      expect(r.status).toBe(1);
+    }
+  });
+  it('with no local dist: the manifest is PENDING without --post-deploy and a FAIL with it; headers come from public/_headers', async () => {
+    const dir = localDist({ dist: false });
+    mkdirSync(join(dir, 'public'));
+    writeFileSync(join(dir, 'public/_headers'), HEADERS);
+    const s = await site();
+    const r = await run(dir, { SITE: s.url });
+    expect(r.out).toContain('PENDING manifest.webmanifest: no dist/manifest.webmanifest to compare with (run npm run build first); run with --post-deploy after the deploy');
+    expect(r.out).toContain('OK    / gets the 3 headers public/_headers gives it');
+    expect(r.status).toBe(0);
+    const strict = await run(dir, { SITE: s.url }, ['--post-deploy']);
+    expect(strict.out).toContain('FAIL  no dist/manifest.webmanifest to compare with');
+    expect(strict.status).toBe(1);
   });
 
   // www: a second local server stands in for www (WWW_SITE), so the real www host is never asked

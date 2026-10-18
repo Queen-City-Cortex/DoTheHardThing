@@ -93,9 +93,11 @@ describe('check:workflows', () => {
     ['e', 'fast on pull requests and also always', ({ ci }) => ci(FAST, `${FAST} --fast`), /\[e\] the journeys step passes --fast outside the pull_request condition/],
     ['f', 'no dry run', ({ ci }) => ci(PREFLIGHT, 'npx --yes "wrangler@${WRANGLER_VERSION}" --version'), /\[f\] job check has no Wrangler dry run/],
     ['f', 'check runs check:fast only', ({ ci }) => ci('      - run: npm run check\n', '      - run: npm run check:fast\n'), /\[f\] job check does not run `npm run check`/],
-    ['f', 'verify:live replaced by curl', ({ ci }) => ci('run: npm run verify:live -- --retries 10', 'run: curl -fsS https://dothehardthing.app/'), /\[f\] job deploy does not verify with `npm run verify:live`[\s\S]*\[f\] job deploy runs curl/],
-    ['f', 'a POST to /api/event', ({ ci }) => ci('run: npm run verify:live -- --retries 10', 'run: npm run verify:live -- --retries 10 && curl -X POST https://dothehardthing.app/api/event'), /\[f\] job deploy: `npm run verify:live .*` sends data: live verification is read-only/],
-    ['f', 'curl --data to the live site', ({ ci }) => ci('run: npm run verify:live -- --retries 10', 'run: npm run verify:live -- --retries 10 && curl --data x https://dothehardthing.app/'), /\[f\] job deploy: `.*curl --data x.*` sends data/],
+    ['f', 'verify:live replaced by curl', ({ ci }) => ci('run: npm run verify:live -- --retries 10 --post-deploy', 'run: curl -fsS https://dothehardthing.app/'), /\[f\] job deploy does not verify with `npm run verify:live`[\s\S]*\[f\] job deploy runs curl/],
+    ['f', 'verify:live without --post-deploy', ({ ci }) => ci('run: npm run verify:live -- --retries 10 --post-deploy', 'run: npm run verify:live -- --retries 10'), /\[f\] job deploy runs `npm run verify:live` without `--post-deploy`: add it .*without it the live header and manifest checks would only be PENDING and never enforced/],
+    ['f', '--post-deploy only in an echo, not passed to verify:live', ({ ci }) => ci('run: npm run verify:live -- --retries 10 --post-deploy', 'run: npm run verify:live -- --retries 10 && echo --post-deploy'), /\[f\] job deploy runs `npm run verify:live` without `--post-deploy`/],
+    ['f', 'a POST to /api/event', ({ ci }) => ci('run: npm run verify:live -- --retries 10 --post-deploy', 'run: npm run verify:live -- --retries 10 --post-deploy && curl -X POST https://dothehardthing.app/api/event'), /\[f\] job deploy: `npm run verify:live .*` sends data: live verification is read-only/],
+    ['f', 'curl --data to the live site', ({ ci }) => ci('run: npm run verify:live -- --retries 10 --post-deploy', 'run: npm run verify:live -- --retries 10 --post-deploy && curl --data x https://dothehardthing.app/'), /\[f\] job deploy: `.*curl --data x.*` sends data/],
     ['f', 'a value that names POST and /api/event', ({ ci }) => ci('      - run: npm run check\n', '      - run: npm run check\n      - run: echo "the Worker answers POST /api/event"\n'), /\[f\] job check: `echo "the Worker answers POST \/api\/event"` names POST and \/api\/event, and a POST there would add to the real counts/],
     ['g', 'hard-coded Wrangler version', ({ ci }) => ci(DEPLOY_STEP, 'run: npx --yes wrangler@4.86.0 deploy\n'), /\[g\] job deploy: `npx --yes wrangler@4\.86\.0 deploy` hard-codes a Wrangler version/],
     ['g', 'unpinned Wrangler', ({ ci }) => ci(PREFLIGHT, 'npx --yes wrangler deploy --dry-run'), /\[g\] job check: `npx --yes wrangler deploy --dry-run .*` runs Wrangler without the pinned version/],
@@ -150,7 +152,7 @@ const GAPS = [
   ['a deploy if that names the right words but can never be true', ({ ci }) => ci("github.event_name == 'push' && github.ref", "github.event_name == 'push' && github.event_name == 'pull_request' && github.ref")],
   ['a step that never runs (if: false on the dry run)', ({ ci }) => ci('      - name: Deploy preflight (dry run, no credentials)\n', '      - name: Deploy preflight (dry run, no credentials)\n        if: false\n')],
   ['a shell bug in a run string (an unquoted path, shellcheck SC2086 through actionlint)', ({ ci }) => ci('--outdir "$RUNNER_TEMP/wrangler-out"', '--outdir $RUNNER_TEMP/wrangler-out')],
-  ['a failure swallowed in a run string', ({ ci }) => ci('run: npm run verify:live -- --retries 10', 'run: npm run verify:live -- --retries 10 || true')],
+  ['a failure swallowed in a run string', ({ ci }) => ci('run: npm run verify:live -- --retries 10 --post-deploy', 'run: npm run verify:live -- --retries 10 --post-deploy || true')],
   ['a pinned sha that is not the version its comment claims', ({ ci }) => ci('actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9', 'actions/upload-artifact@0000000000000000000000000000000000000000')],
 ];
 describe('check:workflows: known gaps (still pass)', () => {
