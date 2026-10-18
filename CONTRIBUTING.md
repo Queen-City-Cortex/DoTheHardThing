@@ -17,7 +17,9 @@ npm run dev        # http://localhost:5173
 npm run check
 ```
 
-`npm run check` is the one command, and CI runs it on Node 22. It runs the public hygiene check, the text check (no dashes, the brand and domain forms), the AGENTS.md check, typecheck, lint, unit tests, the build and `check:dist`, stops at the first failure and prints the step to rerun alone (for example `npm run lint`). A pull request should pass it.
+`npm run check` is the one command, and CI runs it on Node 22. It runs the public hygiene check, the text check (no dashes, the brand and domain forms), the AGENTS.md check, the workflows check (the deploy gate in `.github`), typecheck, lint, unit tests, the build and `check:dist`, stops at the first failure and prints the step to rerun alone (for example `npm run lint`). A pull request should pass it.
+
+If you change `.github/workflows`, also run [actionlint](https://github.com/rhysd/actionlint) 1.7.12 and make sure it prints nothing (`npm run check:workflows`, part of `npm run check`, guards the deploy gate but not syntax or shell).
 
 Merging to `master` deploys the live site automatically once CI passes (see [Automatic deploy](./README.md#automatic-deploy) for the required secrets and how to roll back). Only maintainers merge. Contributors never need Cloudflare credentials: pull requests and forks only run the checks.
 

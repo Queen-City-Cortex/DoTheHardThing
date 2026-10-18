@@ -55,11 +55,17 @@ npm run build && npx wrangler deploy
 
 `wrangler.jsonc` serves `./dist` as static assets, and requests to `/api/*` run the Worker (`worker/index.ts`) first; everything else is served from `./dist`.
 
-Wrangler is not a project dependency: `npx` fetches the current version when you deploy.
+Wrangler is not a project dependency. CI pins it with `WRANGLER_VERSION` in `.github/workflows/ci.yml`; a manual deploy uses whatever version `npx` fetches.
 
 ### Automatic deploy
 
-Every push to `master` runs [`.github/workflows/ci.yml`](.github/workflows/ci.yml). Its `check` job runs `npm run check` (typecheck, lint, tests, build, `check:dist`, a public hygiene check and the AGENTS.md check). Its `journeys` job then runs the end-to-end journeys against the build: 8 of them on a pull request, all of them on `master`. When `check` passes, the `deploy` job builds again and runs `wrangler deploy`, then smoke-checks `https://dothehardthing.app` (the page is 200 and serves the new build's entry script, `GET /api/event` answers 405 from the Worker, and `og-image.png` is a 200). Pull requests and forks never deploy. Deploys are serialised (concurrency group `deploy-production`), the job has `contents: read` only, actions are pinned to commit SHAs, and Node comes from `.nvmrc`. Merging to `master` therefore deploys the site.
+Every push to `master` runs [`.github/workflows/ci.yml`](.github/workflows/ci.yml). Its `check` job runs `npm run check` (typecheck, lint, tests, build, `check:dist`, a public hygiene check, the AGENTS.md check and `check:workflows`, which fails when the workflow loses one of the properties in this paragraph). It also runs a deploy preflight, `wrangler deploy --dry-run`, which needs no credentials. Its `journeys` job then runs the end-to-end journeys against the build: 8 of them on a pull request, all of them on `master`. When `check` and `journeys` both pass, the `deploy` job (environment `production`) builds again and runs `wrangler deploy`, then runs `npm run verify:live`, which only reads `https://dothehardthing.app` (GET requests, nothing is posted): the page is 200 and serves the new build's entry script, `GET /api/event` answers 405 from the Worker, and `og-image.png` and `sw.js` equal this build's. Pull requests and forks never deploy. Deploys are serialised (concurrency group `deploy-production`), the job has `contents: read` only, actions are pinned to commit SHAs, and Node comes from `.nvmrc`. Merging to `master` therefore deploys the site.
+
+**Before the first deploy** (the preflight cannot see these; a real deploy fails without them):
+
+- Analytics Engine is enabled on the Cloudflare account (Analytics Engine in the Cloudflare dashboard). The `EVENTS` binding in `wrangler.jsonc` fails with error 10089 otherwise.
+- The two GitHub secrets below exist and the API token has the permissions below.
+- The GitHub environment `production` needs no setup: GitHub creates it the first time the deploy job runs. Adding a required reviewer to it in the repository settings (Settings > Environments) would make every deploy wait for an approval.
 
 **GitHub secrets** (repository **Settings > Secrets and variables > Actions > Repository secrets > New repository secret**):
 
@@ -78,7 +84,7 @@ Nothing else is stored in the repository: `wrangler.jsonc` has no account id.
 | Zone > Workers Routes | Edit (shown as Write in some places) | Attaches the custom domains `dothehardthing.app` and `www.dothehardthing.app` (`routes` with `custom_domain: true`) |
 | Zone > Zone | Read | Wrangler looks the zone up by hostname |
 
-Scope the account resource to this account only and the zone resource to the `dothehardthing.app` zone only. Not needed: Account Analytics Read (that is only for querying the counts, not for deploying), DNS Edit (Cloudflare creates the Custom Domain records itself), and Memberships Read (the account id is given, so Wrangler does not have to discover it). Creating a brand-new Worker would need the Workers Admin role, but this Worker already exists. Workers Analytics Engine must be enabled once on the account (Workers & Pages > Analytics Engine); it already is. If a deploy fails with a permissions error, the failing API call is in the Wrangler output; add only what it names.
+Scope the account resource to this account only and the zone resource to the `dothehardthing.app` zone only. Not needed: Account Analytics Read (that is only for querying the counts, not for deploying), DNS Edit (Cloudflare creates the Custom Domain records itself), and Memberships Read (the account id is given, so Wrangler does not have to discover it). Creating a brand-new Worker would need the Workers Admin role, but this Worker already exists. Analytics Engine must also be enabled on the account: see "Before the first deploy" above. If a deploy fails with a permissions error, the failing API call is in the Wrangler output; add only what it names.
 
 **Roll back.** Either:
 

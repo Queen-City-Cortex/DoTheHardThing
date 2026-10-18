@@ -2,7 +2,8 @@
 // failure, which is printed with the command to rerun it alone.
 // Usage: node scripts/check.mjs [fast|default|full]   (npm run check:fast | check | check:full)
 //   fast     public hygiene, text rules, the feature maps agree with the journeys (check:maps), the social card was built
-//            from its current inputs (check:og), AGENTS.md enforcers exist, typecheck, lint, unit tests (no build)
+//            from its current inputs (check:og), AGENTS.md enforcers exist, the CI workflow and Dependabot policy keep the
+//            deploy gate (check:workflows), typecheck, lint, unit tests (no build)
 //   default  fast + build + dist check
 //   full     default + every journey against the fresh build (e2e/run.mjs --serve)
 import { spawnSync } from 'node:child_process';
@@ -14,6 +15,7 @@ const FAST = [
   ['check:maps', 'node scripts/check-maps.mjs'],
   ['check:og', 'node scripts/check-og.mjs'],
   ['check:agents-md', 'node scripts/check-agents-md.mjs'],
+  ['check:workflows', 'node scripts/check-workflows.mjs'],
   ['typecheck', 'tsc -b'],
   ['lint', 'eslint .'],
   ['test', 'vitest run'],
