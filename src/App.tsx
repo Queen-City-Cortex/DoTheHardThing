@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
 import * as L from './logic';
+import * as S from './state';
 import { load, refresh, save, type Store } from './storage';
 import { track } from './analytics';
 import { askPermission, askPermissionIfUnasked, cancelReminder, notify, readPermission, reminderMode, scheduleReminder } from './reminder';
@@ -7,75 +8,64 @@ import { now as clockNow, isLate, today } from './clock';
 import { BLOCK_CHOICES, BLOCK_MIN, BREAK_LIMIT_MIN, SMALL_BLOCK_DEFAULT } from './method';
 import { BRAND, TALK_URL, fmt, t, type CopyId } from './copy';
 
-type Screen = 'welcome' | 'name' | 'ask' | 'pick' | 'block' | 'close' | 'closed' | 'about' | 'days';
-// About and Your days open over the day's screen and go back to where they were opened from
-const overlay = (s: Screen) => s === 'about' || s === 'days';
 const uid = () => Math.random().toString(36).slice(2, 10);
 // shown on About, one paragraph each: what stays on the device, what is counted (src/analytics.ts, worker/index.ts), Do Not Track, and the host's own visit count
 const PRIVACY = ['privacy.device', 'privacy.tallies', 'privacy.dnt', 'privacy.host'] as const satisfies readonly CopyId[];
 
-function resumeScreen(d: L.Day): Screen {
-  if (d.closed) return 'closed';
-  if (d.block && d.block.endedAt == null) return 'block';
-  if (d.block) return 'close';
-  return 'welcome';
-}
 // the 120-day window goes through trimDays, so a done day that falls out still counts in the archive
 const putDay = (s: Store, d: L.Day): Store => ({ ...s, ...L.putDay(s, d) });
 // The late cutoffs live in LATE_CUTOFFS in src/method.ts: Welcome and Pick differ on purpose until PRODUCT QUESTION Q1 is decided.
 const hrs = (m: number) => (m % 60 ? `${(m / 60).toFixed(1).replace(/\.0$/, '')}h` : `${m / 60}h`).replace('1.5h', '1½h').replace('2.5h', '2½h');
+// the screen state is one value (src/state.ts); every action reads the clock once, in send(), and the reducer gets it as `now`
+// (the Pick late line is the one clock read at render time)
+const step = (s: S.State, m: { action: S.Action; now: number }) => S.reduce(s, m.action, m.now);
 
 export default function App() {
   const [store, setStore] = useState<Store>(() => load());
   // a block belongs to the day it started: an unfinished earlier day stays open until it is closed
-  const [day, setDay] = useState<L.Day>(() => L.activeDay(store.days, clockNow()).day ?? L.newDay(today(), clockNow()));
-  const [screen, setScreen] = useState<Screen>(() => resumeScreen(day));
-  // the screens under an open overlay, so Done goes back one step (About -> Your days -> Done -> About)
-  const [stack, setStack] = useState<Screen[]>([]);
-  const [now, setNow] = useState(clockNow());
+  const [state, dispatch] = useReducer(step, null, () => S.init(store.days, clockNow()));
+  const send = useCallback((action: S.Action) => dispatch({ action, now: clockNow() }), []);
+  const day = S.dayOf(state);
+  const { screen } = state;
+  const under = S.base(state).screen;
   const history = store.days.filter((d) => d.date < day.date);
   const bad = useMemo(() => L.badDay(history, new Date(day.openedAt)), [store.days.length, day.date, day.openedAt]); // eslint-disable-line react-hooks/exhaustive-deps
-  const [small, setSmall] = useState(false);
   const [saveFailed, setSaveFailed] = useState(false);
 
   useEffect(() => { setStore((st) => putDay(st, day)); }, [day]);
-  // move to the real today: keep `from` (the finished day) in the store, then open today's record or a new one
-  const rollOver = useCallback((from: L.Day) => {
-    const date = today();
-    const next = store.days.find((d) => d.date === date) ?? L.newDay(date, clockNow());
-    // save `from` while it is still the open day: after this a merge would prefer the older stored copy
-    save(putDay(store, from), from.date);
-    setStore((st) => putDay(st, from));
-    setDay(next);
-    setSmall(false);
-    if (overlay(screen)) setStack([resumeScreen(next)]); else setScreen(resumeScreen(next));
-  }, [store, screen]);
-  // the date can change while the app stays open (left open overnight, or backgrounded)
-  useEffect(() => {
-    const check = () => { if (L.shouldRollOver(day, screen, clockNow())) rollOver(day); };
+  // move to the real today: keep the day being left (a finished day) in the store, then open today's record or a new one.
+  // The reducer makes the move; this asks it the same question first, so the day is saved while it is still the open
+  // day: after the move a merge would prefer the older stored copy
+  const rollOver = useCallback((at: number) => {
+    if (!L.shouldRollOver(day, under, at)) return;
+    save(putDay(store, day), day.date);
+    setStore((st) => putDay(st, day));
+    dispatch({ action: { type: 'rollover', stored: store.days }, now: at });
+  }, [day, under, store]);
+  // the date can change while the app stays open (left open overnight, or backgrounded). A layout effect, so closing a
+  // day carried past midnight (closeDay, then this) moves straight on to the real today before the browser paints Closed
+  useLayoutEffect(() => {
+    const check = () => rollOver(clockNow());
     const visible = () => { if (document.visibilityState === 'visible') check(); };
     check();
     const i = setInterval(check, 60_000);
     document.addEventListener('visibilitychange', visible);
     window.addEventListener('focus', check);
     return () => { clearInterval(i); document.removeEventListener('visibilitychange', visible); window.removeEventListener('focus', check); };
-  }, [day, screen, rollOver]);
+  }, [rollOver, screen]);
   useEffect(() => { setSaveFailed(!save(store, day.date)); }, [store, day.date]);
   // pull in what other tabs saved. This tab's open day stays as it is, unless another tab closed it meanwhile:
-  // then that closed day is shown here too, instead of a stale copy
+  // then that closed day is shown here too, instead of a stale copy (the reducer compares it with the open day)
   useEffect(() => {
     const pull = () => {
       setStore((s) => refresh(s, day.date));
-      const theirs = load().days.find((d) => d.date === day.date);
-      if (!theirs || !L.supersedes(theirs, day)) return;
-      setDay(theirs);
-      if (overlay(screen)) setStack(['closed']); else setScreen('closed');
+      send({ type: 'otherTabClosed', theirs: load().days.find((d) => d.date === day.date) });
     };
     const visible = () => { if (document.visibilityState === 'visible') pull(); };
     window.addEventListener('focus', pull);
     document.addEventListener('visibilitychange', visible);
     return () => { window.removeEventListener('focus', pull); document.removeEventListener('visibilitychange', visible); };
-  }, [day, screen]);
+  }, [day.date, send]);
   // after a screen change keyboard and screen-reader users land on the new screen's heading (the name steps focus their input instead),
   // so Tab and Enter work from the top of the screen. Not on the first load: nothing was navigated to.
   const first = useRef(true);
@@ -85,75 +75,64 @@ export default function App() {
     const h = document.querySelector<HTMLElement>('main h1');
     if (h) { h.tabIndex = -1; h.focus({ preventScroll: true }); }
   }, [screen]);
-  // leaving the overlays forgets where they were opened from
-  useEffect(() => { if (!overlay(screen)) setStack([]); }, [screen]);
   useEffect(() => { scheduleReminder(store.reminder); }, [store.reminder]);
   // anonymous counts only (see analytics.ts): reaching step 0, opening Your days. Each goes out once a day, and nothing from the day itself.
   useEffect(() => { if (screen === 'name') track('started'); else if (screen === 'days') track('opened_history'); }, [screen]);
 
-  // timer: always recomputed from stored timestamps
+  // timer: always recomputed from stored timestamps. The first tick on opening settles a block that ended while the app was closed.
+  useEffect(() => { send({ type: 'tick' }); }, [send]);
   useEffect(() => {
     if (screen !== 'block') return;
-    const tick = () => setNow(clockNow());
+    const tick = () => send({ type: 'tick' });
     const i = setInterval(tick, 1000);
     document.addEventListener('visibilitychange', tick);
     return () => { clearInterval(i); document.removeEventListener('visibilitychange', tick); };
-  }, [screen]);
+  }, [screen, send]);
+  // a block that reaches its target says so (only when settling completes it, never on End block)
+  const last = useRef(state);
   useEffect(() => {
-    if (!day.block || day.block.endedAt != null) return;
-    const s = L.settle(day.block, now);
-    if (s !== day.block) {
-      setDay((d) => ({ ...d, block: s, gotBlock: L.autoGotBlock(s, now, d.gotBlock) }));
-      if (s.endReason === 'complete') notify(t('notify.title'), t('notify.body'));
-      setScreen('close');
-    }
-  }, [now, day.block]);
-  // a stopped or broken block (or none at all) never leaves us on the block screen
-  useEffect(() => {
-    const s = L.screenForBlock(screen, day.block);
-    if (s !== screen) setScreen(s);
-  }, [screen, day.block]);
+    if (S.completed(last.current, state)) notify(t('notify.title'), t('notify.body'));
+    last.current = state;
+  }, [state]);
 
-  // before a block starts, drop a choice that is no longer in the pick list
-  const withItems = (d: L.Day, items: L.Item[]): L.Day => ({ ...d, items, chosenId: d.block ? d.chosenId : L.validChoice(items, d.chosenId) });
-  const upd = (p: Partial<L.Day>) => setDay((d) => { const n = { ...d, ...p }; return p.items ? withItems(n, p.items) : n; });
-  const setItem = (id: string, p: Partial<L.Item>) => setDay((d) => withItems(d, d.items.map((i) => (i.id === id ? { ...i, ...p } : i))));
-  const chosen = day.items.find((i) => i.id === day.chosenId);
-  const open = (s: Screen) => { setStack([...stack, screen]); setScreen(s); };
-  const back = () => { setScreen(stack[stack.length - 1] ?? resumeScreen(day)); setStack(stack.slice(0, -1)); };
+  const open = (to: S.OverlayName) => send({ type: 'open', to });
+  const back = () => send({ type: 'back' });
+  const stepBack = () => send({ type: 'stepBack' });
   // counts read the store with the open day as it is right now, so a Yes or Not today shows at once
   const counted = L.putDay(store, day);
   const total = L.totalDone(counted.days, counted.archive);
+
+  // one branch per screen: a screen added to State without one here is a compile error at never()
+  const view = (s: S.State) => {
+    switch (s.screen) {
+      case 'welcome': return <Welcome bad={bad} onStart={() => send({ type: 'start' })} small={s.small} setSmall={(small) => send({ type: 'setSmall', small })} />;
+      case 'name': return <Name day={s.day} history={history} today={s.day.date} upd={({ items }) => send({ type: 'editItems', items })} onBack={stepBack}
+        onNext={() => send({ type: 'namingDone' })} />;
+      case 'ask': return <Ask items={L.filled(s.day.items)} setItem={(id, field, value) => send({ type: 'answer', id, field, value })} onBack={stepBack} onDone={() => send({ type: 'askDone' })} />;
+      case 'pick': return (
+        <Pick day={s.day} small={s.small} upd={({ chosenId }) => send({ type: 'choose', id: chosenId })} onBack={stepBack} onStart={(min) => {
+          askPermissionIfUnasked();
+          send({ type: 'startBlock', min });
+        }} />
+      );
+      case 'block': return <BlockView block={s.day.block} item={S.chosenItem(s.day)} now={s.now} act={(type) => send({ type })} />;
+      case 'close': return <Close didIt={s.day.didIt} item={S.chosenItem(s.day)} total={total} onDays={() => open('days')}
+        onAnswer={(didIt) => { send({ type: 'didIt', didIt }); if (didIt) track('finished'); }} onDone={() => send({ type: 'closeDay' })} />;
+      // starting over replaces today's record whole; no other day is touched
+      case 'closed': return <Closed didIt={s.day.didIt} onDays={() => open('days')} onStartOver={() => send({ type: 'startOver' })} />;
+      case 'days': return <Days days={counted.days} archive={counted.archive} onBack={back} />;
+      case 'about': return <About reminder={store.reminder} total={total} onDays={() => open('days')} setReminder={(r) => setStore((st) => ({ ...st, reminder: r }))} />;
+      default: return S.never(s);
+    }
+  };
 
   return (
     <div className="app">
       <header className="top">
         <span className="brand">{BRAND}</span>
-        {overlay(screen) ? <button className="link" onClick={back}>{t('done')}</button> : <button className="link" onClick={() => open('about')}>{t('about')}</button>}
+        {S.isOverlay(state) ? <button className="link" onClick={back}>{t('done')}</button> : <button className="link" onClick={() => open('about')}>{t('about')}</button>}
       </header>
-      <main className="main">
-        {screen === 'welcome' && <Welcome bad={bad} onStart={() => setScreen('name')} small={small} setSmall={setSmall} />}
-        {screen === 'name' && <Name day={day} history={history} today={day.date} upd={upd} onBack={() => setScreen('welcome')}
-          onNext={() => { setDay((d) => withItems(d, L.guidedOrder(L.filled(d.items)))); setScreen('ask'); }} />}
-        {screen === 'ask' && <Ask items={L.filled(day.items)} setItem={setItem} onBack={() => setScreen('name')} onDone={() => setScreen('pick')} />}
-        {screen === 'pick' && (
-          <Pick day={day} small={small} upd={upd} onBack={() => setScreen('ask')} onStart={async (min) => {
-            askPermissionIfUnasked();
-            const at = clockNow(); setNow(at); upd({ block: L.startBlock(min, at, small), gotBlock: null }); setScreen('block');
-          }} />
-        )}
-        {screen === 'block' && day.block && <BlockView block={day.block} item={chosen} now={now} set={(b) => { const at = clockNow(); setNow(at); setDay((d) => ({ ...d, block: b, gotBlock: L.autoGotBlock(b, at, d.gotBlock) })); }} />}
-        {screen === 'close' && <Close didIt={day.didIt} item={chosen} total={total} onDays={() => open('days')}
-          onAnswer={(didIt) => { upd({ didIt, doneText: didIt ? chosen?.text ?? null : null }); if (didIt) track('finished'); }} onDone={() => {
-            // closing a day carried past midnight moves straight on to the real today
-            const closed = { ...day, closed: true };
-            if (L.shouldRollOver(closed, 'closed', clockNow())) rollOver(closed); else { setDay(closed); setScreen('closed'); }
-          }} />}
-        {/* starting over replaces today's record whole; no other day is touched */}
-        {screen === 'closed' && <Closed didIt={day.didIt} onDays={() => open('days')} onStartOver={() => { setDay(L.newDay(today(), clockNow())); setSmall(false); setScreen('welcome'); }} />}
-        {screen === 'days' && <Days days={counted.days} archive={counted.archive} onBack={back} />}
-        {screen === 'about' && <About reminder={store.reminder} total={total} onDays={() => open('days')} setReminder={(r) => setStore((s) => ({ ...s, reminder: r }))} />}
-      </main>
+      <main className="main">{view(state)}</main>
       {saveFailed && <p className="muted small save-note" role="status">{t('saveNote')}</p>}
     </div>
   );
@@ -221,7 +200,7 @@ function Chip({ tags, pushedCount }: { tags: L.Tag[]; pushedCount: number }) {
   return <span className={`tag ${L.primaryTag(tags)}`}>{L.tagLabel(tags, pushedCount)}</span>;
 }
 
-export function Name({ day, history, today, upd, onBack, onNext }: { day: L.Day; history: L.Day[]; today: string; upd: (p: Partial<L.Day>) => void; onBack: () => void; onNext: () => void }) {
+export function Name({ day, history, today, upd, onBack, onNext }: { day: L.Day; history: L.Day[]; today: string; upd: (p: { items: L.Item[] }) => void; onBack: () => void; onNext: () => void }) {
   const lefts = useMemo(() => L.leftovers(history, today), [history.length, today]); // eslint-disable-line react-hooks/exhaustive-deps
   const [phase, setPhase] = useState(0);
   const [draft, setDraft] = useState('');
@@ -315,7 +294,7 @@ export function Name({ day, history, today, upd, onBack, onNext }: { day: L.Day;
   );
 }
 
-export function Ask({ items, setItem, onBack, onDone }: { items: L.Item[]; setItem: (id: string, p: Partial<L.Item>) => void; onBack: () => void; onDone: () => void }) {
+export function Ask({ items, setItem, onBack, onDone }: { items: L.Item[]; setItem: (id: string, field: 'satisfied' | 'leverage', value: boolean) => void; onBack: () => void; onDone: () => void }) {
   const [idx, setIdx] = useState(0);
   const mounted = useRef(false);
   useEffect(() => { // the next item's heading takes focus (the first item's is focused by the screen change)
@@ -328,8 +307,8 @@ export function Ask({ items, setItem, onBack, onDone }: { items: L.Item[]; setIt
   const yn = (f: 'satisfied' | 'leverage', q: CopyId) => (
     <div className="q"><p>{t(q)}</p>
       <div className="yn">
-        <button className={it[f] === true ? 'on' : ''} onClick={() => setItem(it.id, { [f]: true })}>{t('close.yes')}</button>
-        <button className={it[f] === false ? 'on' : ''} onClick={() => setItem(it.id, { [f]: false })}>{t('no')}</button>
+        <button className={it[f] === true ? 'on' : ''} onClick={() => setItem(it.id, f, true)}>{t('close.yes')}</button>
+        <button className={it[f] === false ? 'on' : ''} onClick={() => setItem(it.id, f, false)}>{t('no')}</button>
       </div></div>
   );
   const last = idx === items.length - 1;
@@ -348,7 +327,7 @@ export function Ask({ items, setItem, onBack, onDone }: { items: L.Item[]; setIt
   );
 }
 
-export function Pick({ day, small, upd, onBack, onStart }: { day: L.Day; small: boolean; upd: (p: Partial<L.Day>) => void; onBack: () => void; onStart: (min: number) => void }) {
+export function Pick({ day, small, upd, onBack, onStart }: { day: L.Day; small: boolean; upd: (p: { chosenId: string }) => void; onBack: () => void; onStart: (min: number) => void }) {
   const list = L.pickOrder(day.items);
   const [min, setMin] = useState<number>(small ? SMALL_BLOCK_DEFAULT : BLOCK_MIN);
   const late = isLate(clockNow(), 'pickWarning');
@@ -384,7 +363,8 @@ export function Pick({ day, small, upd, onBack, onStart }: { day: L.Day; small: 
   );
 }
 
-export function BlockView({ block, item, now, set }: { block: L.Block; item?: L.Item; now: number; set: (b: L.Block) => void }) {
+// the buttons name the block action; the reducer applies it at the time send() reads
+export function BlockView({ block, item, now, act }: { block: L.Block; item?: L.Item; now: number; act: (a: 'pause' | 'resume' | 'drift' | 'stop') => void }) {
   const paused = block.pausedAt != null;
   const away = paused ? now - block.pausedAt! : 0;
   const canPause = L.canPause(block);
@@ -403,11 +383,11 @@ export function BlockView({ block, item, now, set }: { block: L.Block; item?: L.
         <p className="muted small">{t(block.drifts.length ? 'block.drifted' : 'block.focus')}{canPause && ` ${t('block.pauseHint')}`}</p>
       )}
       <div className="actions">
-        {paused ? <button className="primary big" onClick={() => set(L.resume(block, clockNow()))}>{t('block.back')}</button>
-          : <button className="primary big" onClick={() => set(L.drift(block, clockNow()))}>{t('block.comeBack')}</button>}
-        {canPause && <button className="secondary" onClick={() => set(L.pause(block, clockNow()))}>{t('block.stepAway')}</button>}
+        {paused ? <button className="primary big" onClick={() => act('resume')}>{t('block.back')}</button>
+          : <button className="primary big" onClick={() => act('drift')}>{t('block.comeBack')}</button>}
+        {canPause && <button className="secondary" onClick={() => act('pause')}>{t('block.stepAway')}</button>}
         {!paused && !canPause && <p className="muted small">{t('block.pauseUsed')}</p>}
-        <button className="link" onClick={() => set(L.stop(block, clockNow()))}>{t('block.end')}</button>
+        <button className="link" onClick={() => act('stop')}>{t('block.end')}</button>
       </div>
     </section>
   );

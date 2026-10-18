@@ -6,7 +6,7 @@ Do The Hard Thing is a static single-page app plus one tiny Cloudflare Worker.
 
 | Path | What it is |
 | --- | --- |
-| `src/` | The app: Vite, React 18 and TypeScript. `App.tsx` holds the screens; `logic.ts` is the pure day logic (items, tags, blocks, counts); `method.ts` holds the method's rules and numbers as data; `copy.ts` holds every word the app shows; `storage.ts` reads and writes `localStorage`; `reminder.ts` schedules the optional morning notification; `analytics.ts` is the anonymous-count client; `clock.ts` reads the device clock; `events.ts` is the event list shared with the Worker; `decode.ts` turns stored JSON into typed days. Tests sit beside the code as `*.test.ts` (Vitest). |
+| `src/` | The app: Vite, React 18 and TypeScript. `App.tsx` holds the screens and their side effects; `state.ts` is the screen state as one value and the pure reducer that changes it; `logic.ts` is the pure day logic (items, tags, blocks, counts); `method.ts` holds the method's rules and numbers as data; `copy.ts` holds every word the app shows; `storage.ts` reads and writes `localStorage`; `reminder.ts` schedules the optional morning notification; `analytics.ts` is the anonymous-count client; `clock.ts` reads the device clock; `events.ts` is the event list shared with the Worker; `decode.ts` turns stored JSON into typed days. Tests sit beside the code as `*.test.ts` (Vitest). |
 | `worker/index.ts` | A Cloudflare Worker. Requests to `/api/*` run it first. It handles `POST /api/event`, answers 404 or 405 for anything else under `/api/`, and everything else is served from `dist/` by the assets binding. |
 | `wrangler.jsonc` | Worker config: static assets from `./dist`, single-page-app fallback, `run_worker_first` only for `/api/*`, the Analytics Engine binding, and the production routes. |
 | `vite.config.ts` | Vite config and `vite-plugin-pwa` (service worker, web manifest). Also adds the optional Cloudflare Web Analytics beacon at build time. |
@@ -24,7 +24,53 @@ Each platform API has one owner module in `src/`. Every other module calls the o
 | `clock.ts` | `Date.now()` and `new Date()` with no argument | `now()`, `today()`, `isLate(t, cutoff)`; pass the number down |
 | `reminder.ts` | `Notification`, `navigator.serviceWorker` | `askPermission`, `askPermissionIfUnasked`, `readPermission`, `notify`, `scheduleReminder` |
 
-`logic.ts`, `method.ts`, `events.ts` and `copy.ts` are pure: they take every value as an argument, and `logic.ts` imports only `method.ts` and `copy.ts` while the other three import nothing (`clock.ts` imports `logic.ts` and `method.ts`, never the other way; `reminder.ts` imports `copy.ts` for the notification's words). Each owner module imports only what its entry in `OWNER_IMPORTS` lists, `.ts` modules never import React, and the Worker imports only `events.ts` from the app. The `OWNERS` table in `eslint.config.js` turns this map into lint errors that name the function to call, and `scripts/boundaries.test.mjs` checks what those rules catch. Tests are exempt, since they stub the globals.
+`logic.ts`, `state.ts`, `method.ts`, `events.ts` and `copy.ts` are pure: they take every value as an argument (the time too), `logic.ts` imports only `method.ts` and `copy.ts`, `state.ts` only `logic.ts`, and the other three import nothing (`clock.ts` imports `logic.ts` and `method.ts`, never the other way; `reminder.ts` imports `copy.ts` for the notification's words). Each owner module imports only what its entry in `OWNER_IMPORTS` lists, `.ts` modules never import React, and the Worker imports only `events.ts` from the app. The `OWNERS` table in `eslint.config.js` turns this map into lint errors that name the function to call, and `scripts/boundaries.test.mjs` checks what those rules catch. Tests are exempt, since they stub the globals.
+
+## The screen state
+
+`src/state.ts` holds what the app is showing as one value, `State`, and changes it only through `reduce(state, action, now)`. It is pure: it imports only `logic.ts` and takes the time as `now`. `App.tsx` keeps it with `useReducer`, and its `send(action)` reads `now()` from `clock.ts` once per action and hands it in. (The Pick screen's late line is the one clock read at render time.)
+
+`State` is a discriminated union on `screen`. Each variant carries exactly what its screen needs, so a state the UI cannot show cannot be written down (`tsc -b` rejects it; `src/state.property.test.ts` has an `@ts-expect-error` line for each rule):
+
+- the seven day screens (`Base`): `welcome`, `name`, `ask` and `pick` plan a day with no block yet (`PlanDay`) and carry `small`, the bad-day shorter-block toggle, which exists only while planning; `pick` also carries `list` (`pickOrder` of the items) and `chosen` (one of them, or null, always agreeing with `day.chosenId`), built only by `pick()`; `block` carries a running block (`RunningDay`) and the `now` its countdown is drawn from; `close` an ended block (`EndedDay`); `closed` a closed day;
+- the overlays `about` and `days` carry `under`, the day screen they go back to, and `prev`, the overlays opened before them, so Done goes back one step and there is no separate stack to clear.
+
+There are 21 actions, one per button plus `tick` (the block countdown), `rollover` (the date check, with the stored days) and `otherTabClosed` (what another tab saved for this date). Both switches, on the screen in `reduceBase` and on the action in `reduce`, end in `never()`, so a new screen is a compile error until `reduceBase` has a case for it, and a new action until `reduce` lists it. Which screen handles an action is a `reduceBase` case added by hand: an action that every screen ignores compiles, and only the property test notices (its weighted comparison fails when an action never changes the state). The render in `App.tsx` is a `switch (s.screen)` that ends the same way.
+
+What the reducer owns: which screen shows, the day's record while it is open, the toggle, the way back from the overlays, and settling the block (a block action or a tick that ends the block moves to Close in the same step; the old App.tsx did this in an effect, and in another effect left the block screen once a block had ended). What stays in `App.tsx`: saving (`putDay` into the store and `save()`, the save note), pulling in other tabs' saves, the anonymous counts, asking for notification permission on Start, "Your block is done" (sent when `completed(prev, next)` says a step settled a block to complete, never on End block), the morning reminder, focus after a screen change, the one-second block timer, and the date checks.
+
+Ordering notes:
+
+- **Rollover.** `App.tsx` checks the date in a layout effect (on a change of the day, the day screen, the store or the screen, every minute, and on focus and visibility). When `shouldRollOver` says yes it saves the day being left first, `save(putDay(store, day), day.date)`, while it is still the open day (after the move a merge would prefer the older stored copy), then sends `rollover`, which re-checks the same question and opens today's stored record or a new day.
+- **Closing a day carried past midnight** is two transitions: `closeDay` (to Closed), then the layout effect's `rollover`, before the browser paints, so Closed is never shown and the carried day is saved closed exactly as before.
+- **The first tick.** A block that ended while the app was closed opens on the block screen and settles on the `tick` `App.tsx` sends once when it opens (the old App.tsx's settle effect ran once on the first render), so Close and "Your block is done" follow as before.
+
+`src/state.property.test.ts` runs 5000 seeded sequences of up to 40 actions (uneven time steps up to 20 hours, an occasional reload from the stored days) three ways: a model of the App.tsx this replaced (8f5dbaa; its handlers and its effects, with switches to leave out each repair) against the invariants; the reducer against the same invariants, with any action at any time and UI-gated; and the reducer, inside a model of the new App.tsx, against the old model step by step (same screen, same way back, same day record, same stored days, same notifications, and the same toggle while planning). The UI-gated sequences come in two mixes of 5000 each. The uniform one is the original: it spends most steps on Welcome, Name and the overlays, and the pinned seeds depend on it. The weighted one (own buttons weigh 3 against 1 for an overlay or Back, another tab closes the day 0.5% of the time, edits mostly add) reaches Pick, the block, Close, Closed and midnight, and its comparison asserts a floor for how often each action changed the state and each screen was on show. After midnight another tab has sometimes saved a record for the new date before the check, so the rollover must open it. With screenForBlock left out on its own the first invalid state is at seed 82, step 21, and with validChoice left out at seed 38359, step 31; both are asserted. Leaving out the stack clearing breaks no invariant: only the comparison (its `back`) sees it. `REPLAY=1` runs the invariants as a must-pass check on the old logic without its repairs and fails on the 6ef125f state, the block screen with a stopped block (seed 82, step 21).
+
+### Adding a screen
+
+1. Add a variant to `Base` in `src/state.ts` carrying exactly its data, and its name to `DayScreen` in `src/logic.ts` (a compile-time check in `state.ts` fails until the two agree, and so do the `shouldRollOver` call sites in `App.tsx`, `state.ts` and the property test's model). `tsc -b` then fails until `reduceBase` has a case for it.
+2. Add its actions to `Action`. `tsc -b` fails until `reduce` lists them; the case that handles each one in `reduceBase` is yours to add, since an action no screen handles compiles.
+3. Update `resume` if the screen should survive a reload.
+4. Add its render branch to the `switch` in `App.tsx`; `tsc -b` fails at `S.never` until you do.
+5. Add it and its actions to the generators (`gated`, `anyAction`) and the invariants in `src/state.property.test.ts`, and to the model of App.tsx if it changes what is compared. The coverage counts there are `Record`s over the screen and action types, so `tsc -b` fails until each has an entry, and the weighted comparison then fails until a generator reaches the screen (a few hundred views) and each action changes the state (200 times unless given a lower floor). The invariants for the new screen are not checked by anything: those are yours to write.
+6. Add its words to `src/copy.ts`.
+
+### Limits
+
+- The step-by-step comparison proves the reducer equals a model of the old App.tsx, written from its code, not the old App.tsx itself: a mistake in the model would hide a behavior change. The journeys drive the real build.
+- The lint keeping `state.ts` pure is a tripwire, not a wall (see the known gaps in `scripts/boundaries.test.mjs`).
+- `small` is compared only while planning: the reducer drops it once a block starts, the old App kept it through the block, Close and Closed, and every way back to planning reset it. A future way back to Pick would have to decide.
+- Still open (BG-1), a product call and not changed here: a reload in the middle of Name loses its step and draft, and in Ask its item; Back from Pick or Ask lands on the first sub-step. Both are component state in `App.tsx` today. The union makes either fix small: add `phase` to `Name` and `idx` to `Ask`.
+
+Differences from the old App.tsx that nobody can see:
+
+- The reducer ignores actions the UI never offers: Two questions with no item, Start the block without a choice, a block action under an overlay.
+- `choose` with an id that is not on the pick list clears the choice (`chosenId` becomes null) rather than being ignored; the UI only offers listed items.
+- Pulling in another tab's save re-subscribes when the open day's date changes, not on every change of the day, and compares with the reducer's current day.
+- Closing a day carried past midnight is two transitions, as above.
+- A day stored closed with a running block (only a hand-edited store; no tab writes it) stays on Closed; the old App settled the block as soon as it opened such a day (on load, or from another tab's save), sent "Your block is done" if it had reached its target, and showed Close on the closed day.
+- When a rollover opens a day on which another tab has a running block, the old App settled it with the time of the last tick; the reducer settles it on the next tick, within a second.
 
 ## The method's rules
 

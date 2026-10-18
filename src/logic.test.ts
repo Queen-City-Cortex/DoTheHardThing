@@ -414,21 +414,6 @@ describe('validChoice', () => {
   });
 });
 
-describe('screenForBlock', () => {
-  const b = L.startBlock(120, 0);
-  it('stays on a running block', () => {
-    expect(L.screenForBlock('block', b)).toBe('block');
-  });
-  it('goes to close when the block was stopped or broken', () => {
-    expect(L.screenForBlock('block', L.stop(b, 5 * MIN))).toBe('close');
-    expect(L.screenForBlock('block', L.resume(L.pause(b, MIN), 12 * MIN))).toBe('close');
-  });
-  it('leaves other screens alone and falls back to pick with no block', () => {
-    expect(L.screenForBlock('about', L.stop(b, MIN))).toBe('about');
-    expect(L.screenForBlock('block', null)).toBe('pick');
-  });
-});
-
 describe('midnight: the day a block started stays open until closed', () => {
   const at = (d: number, h: number, m = 0) => new Date(2026, 9, d, h, m).getTime();
   const started = (min = 120) => day('2026-10-14', [it_('x', 'risky', true, true)], { chosenId: 'x', block: L.startBlock(min, at(14, 23, 30), min < BLOCK_MIN) });
@@ -527,6 +512,8 @@ describe('midnight: the day a block started stays open until closed', () => {
     });
     it('a running block keeps its start day', () => {
       expect(L.shouldRollOver(started(), 'block', at(15, 0, 30))).toBe(false);
+      expect(L.shouldRollOver(started(), 'pick', at(15, 0, 30))).toBe(false); // whatever screen is named, a started block keeps its day
+      // @ts-expect-error an overlay is not a day screen: pass the screen it opened over
       expect(L.shouldRollOver(started(), 'about', at(15, 0, 30))).toBe(false);
     });
     it('a block being closed keeps its day, answered or not', () => {
