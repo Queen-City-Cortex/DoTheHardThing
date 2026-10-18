@@ -34,5 +34,5 @@ Each file has an H1 and a one-paragraph description, then `Sub-features`, `How t
 - [Your days (history)](./history.md): only done days, an up-only count, the empty state, the ways in and back, v2 migration, two tabs.
 - [Morning reminder](./reminder.md): an honest status line, saved only when permission is granted, Off cancels everything.
 - [Anonymous analytics and sharing](./analytics.md): three bare-name counts, once a day, Do Not Track, blocked and offline, the About privacy line, and the social preview tags and `DoTheHardThing.app` image.
-- [Resilience](./resilience.md): offline reload with the service worker, a 375×667 touch phone, reload mid-naming, blocked storage, no Notification API, hostile item text, long unbroken URLs at 320–430 wide, and WCAG AA text contrast in light and dark; also the one known gap (Close today needs a scroll at 320×568).
+- [Resilience](./resilience.md): offline reload with the service worker, a 375×667 touch phone, reload mid-naming, blocked storage, no Notification API, hostile item text, long unbroken URLs at 320 to 430 wide, and WCAG AA text contrast in light and dark; also the one known gap (Close today needs a scroll at 320×568).
 - [Returning user and bad days](./returning-user.md): late start, missed days, empty peek visits, midnight.

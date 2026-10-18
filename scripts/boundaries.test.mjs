@@ -7,14 +7,20 @@
 //   (`window.navigator.serviceWorker`, `window.Date.now()`), and reading through a variable (`const k = 'localStorage'; window[k]`).
 //   Imports: a dynamic `import('./clock')` in an owner module, and `./../src/logic` in the worker (the `../src/*` group does not match that spelling).
 //   `const { now } = Date` IS caught (no-restricted-properties handles destructuring).
-// Pure modules: logic.ts may import only ./method; method.ts and events.ts import nothing.
+// Pure modules: logic.ts may import only ./method and ./copy; method.ts, events.ts and copy.ts import nothing.
+// Screen copy (COPY_SCREENS): inside the listed screen functions, inline text of 4 or more words is reported. Not caught:
+// a module-level constant rendered by a screen, 1 to 3 words, a screen written as an arrow function or moved to another
+// file, and the screens not listed yet. Values of non-copy JSX attributes (className, id, key, href, rel, target, type,
+// role and the like) are not copy; aria-label and title are. A listed function that is no longer declared in its file fails the last describe.
 // Method numbers (METHOD_SYNTAX, everywhere in src except method.ts and tests) are caught only in the shapes they have
 // taken: an hour compared with a literal, numbers of 2 or more in an array literal, `.length` compared with a literal of
 // 2 or more, and `<n> * 60_000`. Not caught: a cutoff or count through a variable (`const late = 12; hourOf(t) >= late`),
 // arithmetic on the literal (`getHours() > 12 - 1`), a bare default (`useState(small ? 90 : BLOCK_MIN)`), `===` on a count.
 import { ESLint } from 'eslint';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { COPY_SCREENS } from '../eslint.config.js';
 
 const cwd = fileURLToPath(new URL('..', import.meta.url));
 const eslint = new ESLint({ cwd });
@@ -24,7 +30,9 @@ const JSON_PARSE = 'Parse stored data in src/storage.ts through the decoders in 
 const CLOCK = 'Only src/clock.ts reads the device clock. Use now() or today() from src/clock.ts';
 const REMINDER = 'Only src/reminder.ts touches Notification and the service worker. Use askPermission, askPermissionIfUnasked, readPermission, notify or scheduleReminder from src/reminder.ts.';
 const PURE = (f) => `${f} is pure: no imports and no DOM. Take the value as an argument;`;
-const LOGIC_PURE = 'src/logic.ts is pure: it may import only ./method and no DOM. Take the value as an argument;';
+const LOGIC_PURE = 'src/logic.ts is pure: it may import only ./method, ./copy and no DOM. Take the value as an argument;';
+const MOVE_TEXT = "Move this text to src/copy.ts and render it with t(id); a talk quote needs kind: 'quote' and its transcript timestamp as ref.";
+const COPY_ESCAPE = 'Not words a person reads (a class list, an event name)? Disable this rule on that one line with the reason.';
 const HOURS = "Late-hour cutoffs are method rules (PRODUCT QUESTION Q1, see docs/architecture.md): use isLate(t, 'welcomeFraming' | 'pickWarning') from src/clock.ts. The hours live in LATE_CUTOFFS in src/method.ts.";
 const RULE_NUMBER = 'Method numbers live in src/method.ts (RULES). Import the named constant (for example BLOCK_CHOICES, MAX_ITEMS, BREAK_LIMIT_MS) instead of writing the number here.';
 const ESCAPE = 'Not a method number? Name it as a constant and disable this rule on that one line with the reason.';
@@ -96,6 +104,20 @@ const BAD = [
   ['src/logic.ts', 'export const t = Date.now();', CLOCK],
   ['src/logic.ts', 'export const s = localStorage;', STORAGE],
   ['src/events.ts', "import { dayKey } from './logic'; export const x = dayKey;", PURE('src/events.ts')],
+  ['src/copy.ts', "import { useState } from 'react'; export const x = useState;", PURE('src/copy.ts')],
+  ['src/copy.ts', "import { daysWord } from './logic'; export const x = daysWord;", PURE('src/copy.ts')],
+  ['src/copy.ts', 'export const d = document.title;', PURE('src/copy.ts')],
+  ['src/logic.ts', "import { load } from './storage'; import { t } from './copy'; export const x = [load, t];", LOGIC_PURE],
+  // screen copy: inline text of 4 or more words in a migrated screen (JSX text, a string literal, a template part)
+  ['src/App.tsx', 'export function Pick() { return <p>Let the rest slide today.</p>; }', MOVE_TEXT],
+  ['src/App.tsx', "export function Close({ yes }: { yes: boolean }) { return <p>{yes ? 'Good, that is all.' : 'x'}</p>; }", MOVE_TEXT],
+  ['src/App.tsx', 'export function Closed({ n }: { n: number }) { return <p>{`${n} days you have done it`}</p>; }', MOVE_TEXT],
+  ['src/App.tsx', 'export function Welcome() { return <p aria-label="Start your day over now">x</p>; }', MOVE_TEXT],
+  ['src/App.tsx', 'function FirstWelcome() { return <h1>Each morning, do it.</h1>; } export const x = FirstWelcome;', MOVE_TEXT],
+  // a class list on the same element does not hide the text, and aria-label or title text is read, so it is copy
+  ['src/App.tsx', 'export function Pick() { return <p className="muted small wide flush">Let the rest slide today.</p>; }', MOVE_TEXT],
+  ['src/App.tsx', "export function Pick() { return <button aria-label={'Start the block now'} title=\"Starts the block right away\">x</button>; }", MOVE_TEXT],
+  ['src/App.tsx', "declare const track: (e: string) => void; export function Pick() { track('pick started by the user'); return null; }", COPY_ESCAPE],
   // each owner module imports only its allow-list
   ['src/decode.ts', "import { now } from './clock'; export const x = now;", OWNER_IMPORT('src/decode.ts')],
   ['src/storage.ts', "import { track } from './analytics'; export const x = track;", OWNER_IMPORT('src/storage.ts')],
@@ -163,6 +185,15 @@ const FINE = [
   ['src/clock.ts', "import { dayKey } from './logic'; export const x = dayKey;"],
   ['src/clock.ts', "import { dayKey } from './logic'; import { lateAt } from './method'; export const x = [dayKey, lateAt];"],
   ['src/logic.ts', "import { MAX_ITEMS } from './method'; export const x = MAX_ITEMS;"],
+  ['src/logic.ts', "import { MAX_ITEMS } from './method'; import { fmt, t } from './copy'; export const x = [MAX_ITEMS, fmt, t];"],
+  // copy.ts is where the words live; the screens render them by id; short labels and unmigrated screens are left alone
+  ['src/copy.ts', "export const COPY = { 'pick.hero': { kind: 'own', text: 'Which one thing gets today?' } };"],
+  ['src/App.tsx', "declare const t: (id: string) => string; export function Pick() { return <h1 className=\"hero promise big\">{t('pick.hero')}</h1>; }"],
+  ['src/App.tsx', 'export function Pick() { return <button>Start the block</button>; }'],
+  // attributes nobody reads as words: a four-token class list, id, key, rel, role or data value is not copy
+  ['src/App.tsx', 'export function Pick() { return <p className="muted small wide flush" id="a b c d" rel="noopener noreferrer x y" data-x="a b c d">x</p>; }'],
+  ['src/App.tsx', "declare const ok: boolean; export function Close() { return <p key={'a b c d'} className={`muted small wide flush ${ok ? 'on top of it' : 'x'}`}>x</p>; }"],
+  ['src/App.tsx', 'export function Days() { return <p>Only the days you did it are listed.</p>; }'],
   ['src/App.tsx', "import { BLOCK_CHOICES } from './method'; import { isLate } from './clock'; export const x = [BLOCK_CHOICES, isLate];"],
   ['src/other.ts', "import { MAX_ITEMS } from './method'; export const x = MAX_ITEMS;"],
   // the method's own numbers live in method.ts, the one file the method selectors skip
@@ -203,6 +234,10 @@ const GAPS = [
   ['src/App.tsx', 'export const late = (d: Date) => d.getHours() > 12 - 1;'],
   ['src/App.tsx', 'export const initial = (small: boolean, full: number) => (small ? 90 : full);'],
   ['src/logic.ts', 'export const full = (xs: string[]) => xs.length === 5;'],
+  // screen copy outside the listed function declarations: a module constant, an arrow-function screen, another file
+  ['src/App.tsx', "const LINE = 'Let the rest slide today.'; export function Pick() { return <p>{LINE}</p>; }"],
+  ['src/App.tsx', 'export const Pick = () => <p>Let the rest slide today.</p>;'],
+  ['src/Pick.tsx', 'export function Pick() { return <p>Let the rest slide today.</p>; }'],
 ];
 
 describe('module map: bad snippets are reported with the fix', () => {
@@ -221,5 +256,12 @@ describe('module map: fine snippets are clean', () => {
 describe('module map: known gaps', () => {
   it.each(GAPS)('%s: %s (not caught)', async (file, code) => {
     expect(await restricted(file, code)).toEqual([]);
+  });
+});
+
+describe('screen copy: every screen in COPY_SCREENS is still declared in its file', () => {
+  it.each(Object.entries(COPY_SCREENS).flatMap(([file, fns]) => fns.map((fn) => [file, fn])))('%s declares function %s', (file, fn) => {
+    const src = readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
+    expect(new RegExp(`^(export )?function ${fn}\\(`, 'm').test(src), `${fn} is not a function declaration in ${file} any more, so the copy lint skips it: update COPY_SCREENS in eslint.config.js`).toBe(true);
   });
 });
