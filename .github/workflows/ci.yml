@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+env:
+  # The one Wrangler version used by the preflight and the deploy, so they cannot differ.
+  WRANGLER_VERSION: 4.86.0
+
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -21,9 +25,14 @@ jobs:
       - run: npm ci
       # the same loop an agent runs locally: public hygiene, AGENTS.md check, typecheck, lint, unit tests, build, dist check
       - run: npm run check
+      # What the deploy will upload, without credentials: Wrangler reads wrangler.jsonc and dist/, checks the assets and the
+      # bindings, and stops. It does not prove the account is ready (Analytics Engine must be enabled on it: see
+      # "Before the first deploy" in the README), so that failure is still found only by a real deploy.
+      - name: Deploy preflight (dry run, no credentials)
+        run: npx --yes "wrangler@${WRANGLER_VERSION}" deploy --dry-run --outdir "$RUNNER_TEMP/wrangler-out"
 
   # Pull requests run the fast subset of journeys (FAST in e2e/run.mjs), master runs every journey.
-  # The deploy job does not wait for this job.
+  # The deploy job waits for this job: a master build whose journeys fail is never deployed.
   journeys:
     needs: check
     runs-on: ubuntu-latest
@@ -51,13 +60,19 @@ jobs:
           path: ${{ runner.temp }}/e2e/ci
           retention-days: 7
 
-  # Deploys to Cloudflare only after `check` passes, and only for a push to master in
+  # Deploys to Cloudflare only after `check` and `journeys` pass, and only for a push to master in
   # this repository: never for pull requests, never for forks (forks have no secrets anyway).
   deploy:
-    needs: check
+    needs: [check, journeys]
     if: github.event_name == 'push' && github.ref == 'refs/heads/master' && github.repository == 'Queen-City-Cortex/DoTheHardThing'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # GitHub creates this environment on first use, with no protection rules and no secrets of its own (the repository
+    # secrets still apply). It gives a deployment history. A required reviewer can be added to it in the repository
+    # settings later; nothing here depends on that.
+    environment:
+      name: production
+      url: https://dothehardthing.app
     permissions:
       contents: read
     # One deploy at a time. A newer push waits instead of cancelling a deploy that is already running.
@@ -73,26 +88,12 @@ jobs:
       - run: npm ci
       - run: npm run build
       - name: Deploy with Wrangler
-        # Pinned Wrangler. The token and account id exist only in this step's environment.
-        run: npx --yes wrangler@4.86.0 deploy
+        # Pinned Wrangler (WRANGLER_VERSION above). The token and account id exist only in this step's environment.
+        run: npx --yes "wrangler@${WRANGLER_VERSION}" deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      - name: Smoke check the live site
-        # The new build must be the one being served: its entry script name (hashed) has to appear in the live HTML.
-        run: |
-          set -euo pipefail
-          SITE=https://dothehardthing.app
-          ENTRY=$(grep -o 'assets/index-[A-Za-z0-9_-]*\.js' dist/index.html | head -1)
-          [ -n "$ENTRY" ] || { echo "no entry script found in dist/index.html"; exit 1; }
-          for i in 1 2 3 4 5 6 7 8 9 10; do
-            code=$(curl -s -o /tmp/index.html -w '%{http_code}' "$SITE/") || code=000
-            if [ "$code" = 200 ] && grep -q '<div id="root">' /tmp/index.html && grep -q "$ENTRY" /tmp/index.html; then
-              api=$(curl -s -o /dev/null -w '%{http_code}' "$SITE/api/event") || api=000
-              img=$(curl -s -o /dev/null -w '%{http_code} %{content_type}' "$SITE/og-image.png") || img=000
-              echo "page 200, serves $ENTRY; GET /api/event -> $api (Worker answers 405); og-image -> $img"
-              [ "$api" = 405 ] && [ "${img%% *}" = 200 ] && exit 0
-            fi
-            echo "attempt $i: page $code, not live yet; waiting 15s"; sleep 15
-          done
-          echo "smoke check failed: the new build is not being served"; exit 1
+      - name: Verify the live site
+        # Read-only (GET only, no POST to /api/event): the page is 200 and serves this build's entry script, GET /api/event
+        # answers 405 from the Worker, og-image.png and sw.js equal this build's. Retries while the edge catches up.
+        run: npm run verify:live -- --retries 10
