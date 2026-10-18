@@ -132,6 +132,22 @@ describe('verify:live', () => {
     expect(g.out).toContain('FAIL  GET /robots.txt is 404 text/plain, want 200 text/plain');
     expect(new Set([...s.methods, ...gone.methods])).toEqual(new Set(['GET']));
   });
+  it('compares the Report-Only CSP on / like the other headers: PENDING before the deploy, FAIL with --post-deploy', async () => {
+    const csp = "default-src 'self'; script-src 'self' https://static.cloudflareinsights.com";
+    const dir = localDist();
+    writeFileSync(join(dir, 'dist/_headers'), HEADERS + '/*\n  Content-Security-Policy-Report-Only: ' + csp + '\n');
+    const before = await site();
+    const p = await run(dir, { SITE: before.url });
+    expect(p.out).toContain(`PENDING headers on /: / does not get what dist/_headers gives it: Content-Security-Policy-Report-Only: (none), want ${csp}; run with --post-deploy after the deploy`);
+    expect(p.status).toBe(0);
+    expect((await run(dir, { SITE: before.url }, ['--post-deploy'])).out).toContain('FAIL  / does not get what dist/_headers gives it: Content-Security-Policy-Report-Only: (none)');
+    const after = await site({ '/': { status: 200, headers: { ...ROOT, 'Content-Security-Policy-Report-Only': csp.replace('; ', ';   ') }, body: page('assets/index-THIS.js') } });
+    const r = await run(dir, { SITE: after.url }, ['--post-deploy']);
+    expect(r.out).toContain('OK    / gets the 4 headers dist/_headers gives it (X-Frame-Options, Referrer-Policy, Cache-Control, Content-Security-Policy-Report-Only)');
+    expect(r.out).toContain('INFO  / has no content-security-policy, left out on purpose: the CSP is sent Report-Only');
+    expect(r.status).toBe(0);
+    expect(new Set([...before.methods, ...after.methods])).toEqual(new Set(['GET']));
+  });
   it('never fails on extra headers, and compares names case-insensitively and values with whitespace collapsed', async () => {
     const s = await site({ '/': { status: 200, headers: { ...ROOT, 'referrer-policy': undefined, 'Referrer-Policy': 'strict-origin-when-cross-origin', 'cache-control': '  no-cache ', server: 'edge', 'x-extra': '1' }, body: page('assets/index-THIS.js') } });
     const r = await run(localDist(), { SITE: s.url }, ['--post-deploy']);

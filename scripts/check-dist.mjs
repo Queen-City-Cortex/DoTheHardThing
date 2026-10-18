@@ -3,13 +3,14 @@
 // background_color, or the built CSS's light --paper, differs from the page's light theme-color (index.html owns it),
 // the manifest locks the installed app's orientation, public/_headers does not give `/`, `/index.html` and `/sw.js` a
 // no-cache Cache-Control, a path class the app serves
-// lacks a security header of POLICY (scripts/headers-policy.mjs) or has another value, a manifest icon is missing
+// lacks a security header of POLICY (scripts/headers-policy.mjs) or has another value, the CSP is enforcing (not
+// Report-Only), has a report endpoint, misses a beacon origin or names an origin off CSP_ORIGINS, a manifest icon is missing
 // from dist, or robots.txt is missing, is not plain robots syntax, or _headers gives it a non-text/plain Content-Type. Every failure names the file and the fix.
 // Assumes the site is served from the root (vite `base: '/'`): references are matched as /path.
 // Usage: node scripts/check-dist.mjs [distDir]
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { POLICY, display, headersFor, norm, parseHeaders } from './headers-policy.mjs';
+import { POLICY, cspProblems, display, headersFor, norm, parseHeaders } from './headers-policy.mjs';
 
 const dist = process.argv[2] ?? 'dist';
 const problems = [];
@@ -96,6 +97,17 @@ for (const [name, want] of Object.entries(POLICY)) {
   for (const [k, ps] of wrong) problems.push(`public/_headers gives ${ps.join(', ')} ${k}, want \`${display(name)}: ${want}\`: give the \`/*\` rule exactly that line, and no other matching rule the same header (POLICY in scripts/headers-policy.mjs)`);
 }
 
+// 4b. The CSP stays Report-Only: enforcing it is a later owner decision (docs/architecture.md, Hosting), so an enforcing
+//     header fails here until that decision changes this check. The Report-Only value has no report endpoint, keeps the
+//     two beacon origins in their directives, and names no origin outside CSP_ORIGINS (scripts/headers-policy.mjs).
+for (const path of paths) {
+  const enforcing = headersFor(rules, path).get('content-security-policy');
+  if (enforcing !== undefined) problems.push(`public/_headers gives ${path} an enforcing \`Content-Security-Policy\`: send it as \`Content-Security-Policy-Report-Only\` only; enforcing is a later owner decision, made after a clean report-only soak (docs/architecture.md, Hosting), not a header edit`);
+}
+const cspValues = new Set(paths.map((p) => headersFor(rules, p).get('content-security-policy-report-only')).filter((v) => v !== undefined));
+for (const v of cspValues) for (const p of cspProblems(v)) problems.push(`the Content-Security-Policy-Report-Only in public/_headers ${p}`);
+for (const p of cspProblems(POLICY['content-security-policy-report-only'])) problems.push(`CSP_DIRECTIVES in scripts/headers-policy.mjs ${p}`);
+
 // 5. robots.txt: a real file, so Cloudflare serves it (text/plain) before the SPA fallback would answer the app HTML.
 //    Cheap checks only: it exists, has a User-agent line, every other line is a `Field: value` or a comment, and holds no
 //    HTML; _headers does not give it another Content-Type. The service worker never serves it to crawlers (they run none).
@@ -115,4 +127,4 @@ if (problems.length) {
   console.error(`check:dist: ${problems.length} problem(s) in ${dist}`);
   process.exit(1);
 }
-console.log(`check:dist OK: ${precache.size} precache entries cover ${needed.size} needed files; manifest colors match the page; no orientation lock; manifest icons present; the app shell is served with no-cache; ${paths.length} path classes get the ${Object.keys(POLICY).length} security headers; robots.txt is plain robots rules`);
+console.log(`check:dist OK: ${precache.size} precache entries cover ${needed.size} needed files; manifest colors match the page; no orientation lock; manifest icons present; the app shell is served with no-cache; ${paths.length} path classes get the ${Object.keys(POLICY).length} security headers (the CSP Report-Only, not enforcing); robots.txt is plain robots rules`);

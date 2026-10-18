@@ -7,7 +7,8 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const SCRIPT = fileURLToPath(new URL('./check-dist.mjs', import.meta.url));
-const SECURITY = '  X-Content-Type-Options: nosniff\n  Referrer-Policy: strict-origin-when-cross-origin\n  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()\n  X-Frame-Options: DENY\n';
+const CSP = "default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; connect-src 'self' https://cloudflareinsights.com; img-src 'self'; style-src 'self'; font-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+const SECURITY = `  X-Content-Type-Options: nosniff\n  Referrer-Policy: strict-origin-when-cross-origin\n  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()\n  X-Frame-Options: DENY\n  Content-Security-Policy-Report-Only: ${CSP}\n`;
 const HEADERS = '/*\n' + SECURITY + '/\n  Cache-Control: no-cache\n/sw.js\n  Cache-Control: no-cache\n/index.html\n  Cache-Control: no-cache\n/assets/*\n  Cache-Control: public, max-age=31536000, immutable\n';
 const dirs = [];
 
@@ -132,6 +133,43 @@ describe('check:dist, security headers', () => {
     const r = build({ headers: HEADERS + 'https://example.com/*\n  X-Frame-Options: DENY\n' });
     expect(r.status).toBe(1);
     expect(r.stderr).toContain('is not a path rule');
+  });
+});
+
+describe('check:dist, the Report-Only CSP', () => {
+  const csp = (from, to) => HEADERS.replace(from, to);
+  it('fails when the `/*` rule has no Report-Only CSP (the state before it), naming the fix', () => {
+    const r = build({ headers: csp(`  Content-Security-Policy-Report-Only: ${CSP}\n`, '') });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('public/_headers gives /, /sw.js, /manifest.webmanifest, /assets/app.js, /nope no Content-Security-Policy-Report-Only, want `Content-Security-Policy-Report-Only: default-src');
+  });
+  it('fails on an enforcing CSP, saying enforcing is an owner decision', () => {
+    const r = build({ headers: csp('Content-Security-Policy-Report-Only:', 'Content-Security-Policy:') });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('public/_headers gives / an enforcing `Content-Security-Policy`: send it as `Content-Security-Policy-Report-Only` only; enforcing is a later owner decision');
+    const both = build({ headers: HEADERS + '/\n  Content-Security-Policy: ' + CSP + '\n' });
+    expect(both.status).toBe(1);
+    expect(both.stderr).toContain('gives / an enforcing `Content-Security-Policy`');
+    expect(both.stderr).not.toContain('gives /nope an enforcing');
+  });
+  it('fails on a report-uri or report-to (the repo has no endpoint)', () => {
+    for (const d of ['report-uri https://r.example/csp', 'report-to csp']) {
+      const r = build({ headers: csp("frame-ancestors 'none'", `frame-ancestors 'none'; ${d}`) });
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain(`the Content-Security-Policy-Report-Only in public/_headers has ${d.split(' ')[0]}, but the repo has no report endpoint: remove it`);
+    }
+  });
+  it('fails when a beacon origin is dropped from its directive', () => {
+    const r = build({ headers: csp("connect-src 'self' https://cloudflareinsights.com", "connect-src 'self'") });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('connect-src does not allow https://cloudflareinsights.com, which the Cloudflare Web Analytics beacon needs: add it to connect-src');
+  });
+  it('fails on an origin or source off the allowlist, data: and unsafe-inline included', () => {
+    for (const src of ['https://cdn.example', 'data:', "'unsafe-inline'"]) {
+      const r = build({ headers: csp("img-src 'self'", `img-src 'self' ${src}`) });
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain(`img-src allows \`${src}\`: only 'self', 'none' and the origins in CSP_ORIGINS (scripts/headers-policy.mjs) may appear`);
+    }
   });
 });
 

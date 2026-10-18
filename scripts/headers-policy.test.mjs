@@ -1,6 +1,6 @@
 // The _headers parser that check:dist and verify:live share: rule matching, joining, detaching, errors.
 import { describe, it, expect } from 'vitest';
-import { POLICY, display, headersFor, norm, parseHeaders } from './headers-policy.mjs';
+import { CSP_ORIGINS, CSP_REPORT_ONLY, POLICY, cspProblems, display, headersFor, norm, parseHeaders } from './headers-policy.mjs';
 
 describe('parseHeaders and headersFor', () => {
   it('matches splats greedily (also the empty rest) and placeholders up to one slash', () => {
@@ -32,7 +32,8 @@ describe('parseHeaders and headersFor', () => {
   it('names, values and the policy', () => {
     expect(display('x-content-type-options')).toBe('X-Content-Type-Options');
     expect(norm('  camera=(),   microphone=() ')).toBe('camera=(), microphone=()');
-    expect(Object.keys(POLICY)).toEqual(['x-content-type-options', 'referrer-policy', 'permissions-policy', 'x-frame-options']);
+    expect(Object.keys(POLICY)).toEqual(['x-content-type-options', 'referrer-policy', 'permissions-policy', 'x-frame-options', 'content-security-policy-report-only']);
+    expect(POLICY).not.toHaveProperty('content-security-policy');
     expect(POLICY['x-frame-options']).toBe('DENY');
   });
   it('public/_headers gives every path class the policy (the same table check:dist uses)', async () => {
@@ -42,5 +43,21 @@ describe('parseHeaders and headersFor', () => {
     for (const path of ['/', '/sw.js', '/manifest.webmanifest', '/assets/index-x.js', '/nope']) {
       for (const [n, v] of Object.entries(POLICY)) expect(norm(headersFor(rules, path).get(n)), `${path} ${n}`).toBe(v);
     }
+  });
+});
+
+describe('the Report-Only CSP', () => {
+  it('is the policy derived from the built page, with no problems', () => {
+    expect(CSP_REPORT_ONLY).toBe("default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; connect-src 'self' https://cloudflareinsights.com; img-src 'self'; style-src 'self'; font-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'");
+    expect(cspProblems(CSP_REPORT_ONLY)).toEqual([]);
+    expect(Object.keys(CSP_ORIGINS)).toEqual(['https://static.cloudflareinsights.com', 'https://cloudflareinsights.com']);
+  });
+  it('flags a report endpoint, an origin off the allowlist, and a missing beacon origin', () => {
+    expect(cspProblems(CSP_REPORT_ONLY + '; report-uri /csp')[0]).toContain('has report-uri, but the repo has no report endpoint');
+    expect(cspProblems(CSP_REPORT_ONLY + '; report-to csp')[0]).toContain('has report-to');
+    expect(cspProblems(CSP_REPORT_ONLY.replace("style-src 'self'", "style-src 'self' https://fonts.example"))).toEqual([expect.stringContaining('style-src allows `https://fonts.example`')]);
+    expect(cspProblems(CSP_REPORT_ONLY.replace(' https://static.cloudflareinsights.com', ''))).toEqual([expect.stringContaining('script-src does not allow https://static.cloudflareinsights.com')]);
+    // an allowed origin in the wrong directive is not enough
+    expect(cspProblems(CSP_REPORT_ONLY.replace(' https://cloudflareinsights.com', '').replace("img-src 'self'", "img-src 'self' https://cloudflareinsights.com"))).toEqual([expect.stringContaining('connect-src does not allow https://cloudflareinsights.com')]);
   });
 });

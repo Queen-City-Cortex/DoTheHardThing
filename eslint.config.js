@@ -147,7 +147,7 @@ export default tseslint.config(
   {
     // the check scripts and the journey runner run in Node (older scripts and journeys evaluate browser code inside page.evaluate and are not linted yet)
     extends: [js.configs.recommended],
-    files: ['scripts/check*.mjs', 'scripts/headers-policy.mjs', 'scripts/transcript.mjs', 'scripts/verify-live.mjs', 'scripts/**/*.test.mjs', 'e2e/run.mjs'],
+    files: ['scripts/check*.mjs', 'scripts/headers-policy.mjs', 'scripts/transcript.mjs', 'scripts/verify-live.mjs', 'scripts/**/*.test.mjs', 'e2e/run.mjs', 'e2e/csp-watch.mjs'],
     languageOptions: { ecmaVersion: 2023, sourceType: 'module', globals: globals.node },
   },
   { files: ['src/**/*.tsx'], ignores: TESTS, rules: boundaries({ ui: true }) },
