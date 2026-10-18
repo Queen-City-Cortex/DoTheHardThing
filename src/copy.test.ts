@@ -2,11 +2,11 @@
 // quotes against the talk.
 // The transcript is not in the repo, so the talk checks run only where FERRISS_TRANSCRIPT points at one (locally, not in
 // CI; scripts/transcript.mjs finds it) and show as skipped otherwise. Everything else here runs everywhere.
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createElement as h } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { COPY, REQUIRED, t, type CopyEntry, type CopyId } from './copy';
-import { Close, Closed, Pick, Welcome } from './App';
+import { COPY, REQUIRED, fmt, t, type CopyEntry, type CopyId } from './copy';
+import { About, Ask, BlockView, Close, Closed, Days, Name, Pick, Welcome } from './App';
 import * as L from './logic';
 import { readTranscript } from '../scripts/transcript.mjs';
 
@@ -146,11 +146,34 @@ const text = (el: Parameters<typeof renderToStaticMarkup>[0]) => renderToStaticM
 const noop = () => {};
 const bad = (p: Partial<L.BadDay>): L.BadDay => ({ missedDays: 0, late: false, bad: false, firstVisit: false, ...p });
 const welcome = (b: Partial<L.BadDay>) => text(h(Welcome, { bad: bad(b), onStart: noop, small: false, setSmall: noop }));
-const item = (name: string, yes: boolean): L.Item => ({ id: name, text: name, tags: ['risky'], satisfied: yes, leverage: yes, pushedCount: 0 });
-const day = (items: L.Item[]): L.Day => ({ ...L.newDay('2026-10-14', 0), items });
+const item = (name: string, yes: boolean | null, tags: L.Tag[] = ['risky'], pushedCount = 0): L.Item => ({ id: name, text: name, tags, satisfied: yes, leverage: yes, pushedCount });
+const day = (items: L.Item[], p: Partial<L.Day> = {}): L.Day => ({ ...L.newDay('2026-10-14', 0), items, ...p });
 const pick = (items: L.Item[]) => text(h(Pick, { day: day(items), small: false, upd: noop, onBack: noop, onStart: noop }));
 const close = (didIt: boolean | null, total: number) => text(h(Close, { didIt, total, onAnswer: noop, onDays: noop, onDone: noop }));
 const closed = (didIt: boolean) => text(h(Closed, { didIt, onDays: noop, onStartOver: noop }));
+// Name renders its first step (the later steps need a click); `history` brings leftovers from yesterday
+const yesterday = day([item('Old letter', null, ['risky'], 1), item('Gym', null, ['pushed', 'anxious'])], { date: '2026-10-13', didIt: false });
+const name = (items: L.Item[], history: L.Day[] = []) => text(h(Name, { day: day(items), history, today: '2026-10-14', upd: noop, onBack: noop, onNext: noop }));
+const ask = (items: L.Item[]) => text(h(Ask, { items, setItem: noop, onBack: noop, onDone: noop }));
+const T0 = 1_000_000;
+const blk = (p: Partial<L.Block> = {}): L.Block => ({ ...L.startBlock(120, T0), ...p });
+const block = (b: L.Block, it?: L.Item, now = T0 + 5 * 60_000) => text(h(BlockView, { block: b, item: it, now, set: noop }));
+const done = (date: string, doneText: string | null = 'Ask for the raise') => day([], { date, didIt: true, doneText, closed: true });
+// Your days reads today() for the month, so the clock is set while it renders
+const days = (ds: L.Day[], archive: L.Archive = {}) => {
+  vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 9, 14, 8, 0));
+  try { return text(h(Days, { days: ds, archive, onBack: noop })); } finally { vi.useRealTimers(); }
+};
+// About reads the reminder mode and the permission from window, Notification and navigator: stub them while it renders
+type Env = 'unsupported' | 'open-only' | 'trigger';
+const about = (env: Env, permission: L.Permission, reminder: string | null = null, total = 0) => {
+  const notification = { permission };
+  vi.stubGlobal('window', env === 'unsupported' ? {} : { Notification: notification, ...(env === 'trigger' ? { TimestampTrigger: class {} } : {}) });
+  vi.stubGlobal('Notification', notification);
+  if (env === 'trigger') vi.stubGlobal('navigator', { serviceWorker: {} });
+  try { return text(h(About, { reminder, total, onDays: noop, setReminder: noop })); } finally { vi.unstubAllGlobals(); }
+};
+const twoItems = [item('Call mom', null, ['pushed', 'risky'], 2), item('Tax letter', true, ['anxious'])];
 const SCREENS: Record<keyof typeof REQUIRED, string> = {
   firstWelcome: welcome({ firstVisit: true }),
   firstWelcomeLate: welcome({ firstVisit: true, late: true }),
@@ -163,6 +186,19 @@ const SCREENS: Record<keyof typeof REQUIRED, string> = {
   closeFirstYes: close(true, 1),
   closed: closed(true),
   closedNotToday: closed(false),
+  nameFirst: name([]),
+  nameLeftovers: name([], [yesterday]),
+  ask: ask(twoItems),
+  block: block(blk(), twoItems[0]),
+  blockDrifted: block(blk({ drifts: [T0 + 1000] }), twoItems[0]),
+  blockPaused: block(blk({ pausedAt: T0 + 60_000, breaks: 1 }), twoItems[0], T0 + 4 * 60_000),
+  blockPauseUsed: block(blk({ breaks: 1, pausedMs: 30_000 }), twoItems[0]),
+  daysEmpty: days([]),
+  days: days([done('2026-10-02')]),
+  aboutUnsupported: about('unsupported', 'denied'),
+  aboutDenied: about('open-only', 'denied'),
+  aboutAsk: about('trigger', 'default'),
+  aboutAllowed: about('open-only', 'granted'),
 };
 
 describe('required lines are on their screens', () => {
@@ -174,5 +210,87 @@ describe('required lines are on their screens', () => {
       const sentence = /[.?!]$/.test(t(id)) || t(id).split(/\s+/).filter((w) => /\w/.test(w)).length >= 4;
       expect(sentence, `${id} ("${t(id)}") is too short to prove anything; REQUIRED holds sentences only`).toBe(true);
     }
+  });
+});
+
+// ---- the other states: the lines built with fmt or chosen by state, as each one shows ----
+describe('Name, Ask, the block, Your days and About render their copy in every state', () => {
+  const five = ['a', 'b', 'c', 'd', 'e'].map((n) => item(n, null, ['pushed']));
+  // a line split over elements (a count with its number set apart, a row of two spans) reads with single spaces
+  const flat = (s: string) => s.replace(/\s+/g, ' ');
+  it('Name: the step, its placeholder, the list with its remove labels, and the next button', () => {
+    const empty = name([]);
+    expect(empty).toContain(t('name.eyebrow'));
+    expect(renderToStaticMarkup(h(Name, { day: day([]), history: [], today: '2026-10-14', upd: noop, onBack: noop, onNext: noop }))).toContain(`aria-label="${fmt.steps(1, 3)}"`);
+    expect(empty).toContain(t('name.placeholder'));
+    expect(empty).toContain(t('name.skip'));
+    expect(empty).not.toContain(t('next'));
+    const listed = renderToStaticMarkup(h(Name, { day: day(twoItems), history: [], today: '2026-10-14', upd: noop, onBack: noop, onNext: noop }));
+    expect(listed).toContain(`aria-label="${fmt.remove('Call mom')}"`);
+    expect(listed).toContain(`aria-label="${t('name.pushed')}"`);
+    expect(text(h(Name, { day: day(twoItems), history: [], today: '2026-10-14', upd: noop, onBack: noop, onNext: noop }))).toContain(`${t('tag.risky')} · ${fmt.pushedTimes(2)}`);
+    expect(name(twoItems)).toContain(t('next'));
+    expect(renderToStaticMarkup(h(Name, { day: day(five), history: [], today: '2026-10-14', upd: noop, onBack: noop, onNext: noop }))).toContain(`placeholder="${t('name.placeholderFull')}"`);
+  });
+  it('Name with leftovers: each one offered with its tags, and the other placeholder', () => {
+    const offered = name([], [yesterday]);
+    expect(offered).toContain(`${t('tag.risky')} · ${fmt.pushedTimes(2)}`);
+    expect(offered).toContain(`${t('tag.anxious')} · ${fmt.pushedTimes(1)}`);
+    expect(renderToStaticMarkup(h(Name, { day: day([]), history: [yesterday], today: '2026-10-14', upd: noop, onBack: noop, onNext: noop }))).toContain(`placeholder="${t('name.placeholderNew')}"`);
+    expect(name([])).not.toContain(t('name.leftovers'));
+  });
+  it('Ask: the item, both questions, Yes and No, and Pick one on the last item', () => {
+    const one = ask([item('Tax letter', true, ['anxious'])]);
+    for (const id of ['twoQuestions', 'ask.satisfied', 'ask.leverage', 'close.yes', 'no', 'back', 'pick.eyebrow'] as const) expect(one).toContain(t(id));
+    expect(renderToStaticMarkup(h(Ask, { items: [item('Tax letter', true)], setItem: noop, onBack: noop, onDone: noop }))).toContain(`aria-label="${fmt.steps(1, 1)}"`);
+    expect(ask(twoItems)).toContain(t('next'));
+    expect(ask([])).toBe('');
+  });
+  it('the block: running, paused, drifted, pause used, and with no item', () => {
+    expect(block(blk(), twoItems[0])).toContain(t('block.left'));
+    expect(block(blk(), twoItems[0])).toContain(`${t('block.focus')} ${t('block.pauseHint')}`);
+    expect(block(blk(), twoItems[0])).toContain(t('block.comeBack'));
+    expect(block(blk(), twoItems[0])).toContain(t('block.stepAway'));
+    const paused = block(blk({ pausedAt: T0 + 60_000, breaks: 1 }), twoItems[0], T0 + 4 * 60_000);
+    expect(paused).toContain(fmt.pausedLine(3, 10));
+    expect(paused).toContain(t('block.holding'));
+    expect(paused).toContain(t('block.back'));
+    const used = block(blk({ breaks: 1, pausedMs: 30_000, drifts: [1] }), twoItems[0]);
+    expect(used).toContain(t('block.drifted'));
+    expect(used).not.toContain(t('block.pauseHint'));
+    expect(used).toContain(t('block.pauseUsed'));
+    expect(block(blk())).toContain(t('block.fallback'));
+    expect(block(blk())).toContain(t('yourOneThing'));
+    expect(block(blk())).toContain(t('block.end'));
+  });
+  it('Your days: the count, the month line, earlier months, another year, a day with no text', () => {
+    const month = days([done('2026-10-02'), done('2026-10-09', null), day([], { date: '2026-10-10', didIt: false })]);
+    expect(flat(month)).toContain(fmt.daysCount(fmt.daysWord(2)));
+    expect(month).toContain(fmt.monthLine('October', fmt.daysWord(2)));
+    expect(month).toContain(t('yourOneThing'));
+    expect(month).not.toContain(t('days.earlier'));
+    const earlier = days([done('2026-09-02'), done('2025-12-02')], { '2025-03': 4 });
+    expect(earlier).toContain(t('days.earlier'));
+    expect(flat(earlier)).toContain(fmt.daysCount(fmt.daysWord(6)));
+    expect(earlier).toContain('September');
+    expect(earlier).toContain('December 2025');
+    expect(earlier).toContain('March 2025');
+    expect(earlier).toContain(fmt.daysWord(4));
+    expect(days([])).toContain(t('back'));
+  });
+  it('About: the days row, the reminder in each mode and permission', () => {
+    expect(flat(about('open-only', 'granted', null, 0))).toContain(`${t('yourDays')} ${fmt.daysLink(0)}`);
+    expect(fmt.daysLink(0)).toBe('›');
+    expect(about('open-only', 'granted', null, 12)).toContain(fmt.daysLink(12));
+    expect(about('trigger', 'granted', '06:15')).toContain(fmt.reminderSet('06:15', true));
+    expect(about('trigger', 'granted', '06:15')).toContain(t('about.off'));
+    expect(about('open-only', 'granted', '07:30')).toContain(fmt.reminderSet('07:30', false));
+    expect(about('trigger', 'denied', '07:30')).toContain(t('reminder.denied'));
+    expect(about('unsupported', 'denied', '07:30')).not.toContain(t('about.off'));
+    for (const id of ['about', 'about.reminder'] as const) expect(about('open-only', 'default')).toContain(t(id));
+  });
+  it('no state shows an em or en dash', () => {
+    const dashes = new RegExp(`[${String.fromCharCode(0x2013, 0x2014)}]`); // built from code points: check-text bans the characters and their escapes in src/
+    for (const [s, html] of Object.entries(SCREENS)) expect(html, s).not.toMatch(dashes);
   });
 });

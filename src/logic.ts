@@ -1,6 +1,7 @@
 // Core, pure logic for Do The Hard Thing. No DOM, no storage: everything here is unit tested.
-// The method's numbers (items, block length, the break, the late cutoffs) come from src/method.ts, and the close and
-// welcome lines from src/copy.ts: its only two imports, both pure.
+// The method's numbers (items, block length, the break, the late cutoffs) come from src/method.ts, and every word it
+// returns (the close and welcome lines, tag labels, day counts, the reminder status) from src/copy.ts: its only two
+// imports, both pure.
 import { fmt, t } from './copy';
 import { BLOCK_MAX, BLOCK_MIN, BREAK_LIMIT_MS, BREAKS_PER_BLOCK, FULL_BLOCK_FOCUS_MIN, lateAt, MAX_ITEMS, PICK_FIRST, SMALL_BLOCK_DEFAULT, SMALL_BLOCK_OPTIONS, SUGGESTED_MIN } from './method';
 
@@ -49,7 +50,7 @@ export function daysBetween(a: string, b: string): number {
 }
 
 // ---------- naming the discomfort ----------
-export const norm = (t: string) => t.trim().toLowerCase().replace(/\s+/g, ' ');
+export const norm = (text: string) => text.trim().toLowerCase().replace(/\s+/g, ' ');
 export const filled = (items: Item[]) => items.filter((i) => i.text.trim() !== '');
 export const canAdd = (items: Item[]) => filled(items).length < MAX_ITEMS;
 export const canContinue = (items: Item[]) => filled(items).length >= 1 && filled(items).length <= MAX_ITEMS;
@@ -61,9 +62,9 @@ const TAGS: Tag[] = ['pushed', 'risky', 'anxious'];
 /** True if the item carries the tag. A carried item (pushedCount > 0) has been pushed, whatever its tags say. */
 export const hasTag = (item: Pick<Item, 'tags' | 'pushedCount'>, tag: Tag) => item.tags.includes(tag) || (tag === 'pushed' && item.pushedCount > 0);
 /** The tags plus one more, in canonical order, without repeats. */
-export const withTag = (tags: Tag[], tag: Tag): Tag[] => TAGS.filter((t) => t === tag || tags.includes(t));
+export const withTag = (tags: Tag[], tag: Tag): Tag[] => TAGS.filter((x) => x === tag || tags.includes(x));
 /** The tag that colours the chip: risky, then anxious, then pushed. */
-export const primaryTag = (tags: Tag[]): Tag => (['risky', 'anxious', 'pushed'] as Tag[]).find((t) => tags.includes(t)) ?? 'pushed';
+export const primaryTag = (tags: Tag[]): Tag => (['risky', 'anxious', 'pushed'] as Tag[]).find((x) => tags.includes(x)) ?? 'pushed';
 
 export type AddOutcome = 'added' | 'tagged' | 'already' | 'empty' | 'full';
 /** Add the text under a tag. The same text already on the list (any tag) is not copied: it gains the tag instead,
@@ -90,21 +91,21 @@ export function addItem(items: Item[], text: string, tag: Tag, id: string, pushe
 export function removeTag(items: Item[], id: string, tag: Tag): Item[] {
   return items.flatMap((i) => {
     if (i.id !== id) return [i];
-    const tags = i.tags.filter((t) => t !== tag);
+    const tags = i.tags.filter((x) => x !== tag);
     return tags.length ? [{ ...i, tags }] : [];
   });
 }
 
 /** Guided order: pushed first, then risky, then anxious, by an item's earliest tag (stable within a group). */
-const rank = (i: Item) => Math.min(...i.tags.map((t) => TAG_ORDER[t]));
+const rank = (i: Item) => Math.min(...i.tags.map((x) => TAG_ORDER[x]));
 export function guidedOrder(items: Item[]): Item[] {
   return items.map((it, i) => ({ it, i })).sort((a, b) => rank(a.it) - rank(b.it) || a.i - b.i).map((x) => x.it);
 }
 
 /** Tag label for display: `risky · anxious`, with the pushed part last (`pushed`, or `pushed N×` once carried), never `pushed 0×`. */
 export function tagLabel(tags: Tag[], pushedCount = 0): string {
-  const parts: string[] = TAGS.filter((t) => t !== 'pushed' && tags.includes(t));
-  if (tags.includes('pushed') || pushedCount > 0) parts.push(pushedCount > 0 ? `pushed ${pushedCount}×` : 'pushed');
+  const parts = TAGS.filter((x) => x !== 'pushed' && tags.includes(x)).map(fmt.tag);
+  if (tags.includes('pushed') || pushedCount > 0) parts.push(pushedCount > 0 ? fmt.pushedTimes(pushedCount) : fmt.tag('pushed'));
   return parts.join(' · ');
 }
 
@@ -277,7 +278,7 @@ export const monthDone = (days: Day[], archive: Archive, ym: string) => days.fil
 /** Done days of the month, newest first. */
 export function thisMonthEntries(days: Day[], ym: string): { date: string; text: string }[] {
   return days.filter((d) => isDone(d) && ymOf(d.date) === ym).sort((a, b) => (a.date < b.date ? 1 : -1))
-    .map((d) => ({ date: d.date, text: d.doneText ?? 'Your one thing' }));
+    .map((d) => ({ date: d.date, text: d.doneText ?? t('yourOneThing') }));
 }
 /** Months before `currentYm` with at least one done day, newest first. Empty months are never listed. */
 export function earlierMonths(days: Day[], archive: Archive, currentYm: string): { ym: string; count: number }[] {
@@ -295,10 +296,10 @@ export function monthLabel(ym: string): string {
 export function dayLabel(date: string): string {
   const [y, m, d] = date.split('-').map(Number);
   const parts = new Intl.DateTimeFormat('en-US', { weekday: 'short', day: 'numeric', timeZone: 'UTC' }).formatToParts(utc(y, m, d));
-  const part = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
+  const part = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
   return `${part('weekday')} ${part('day')}`;
 }
-export const daysWord = (n: number) => (n === 1 ? '1 day' : `${n} days`);
+export const daysWord = fmt.daysWord;
 
 /** What closing the day says after "Did you do it?". Nothing until it is answered. */
 export function closeLines(didIt: boolean | null, total: number): { note: string | null; count: string | null; first: boolean } {
@@ -342,11 +343,9 @@ export type ReminderMode = 'unsupported' | 'trigger' | 'open-only';
 export type Permission = 'default' | 'granted' | 'denied';
 /** What the reminder control can honestly say: `active` only when a reminder will actually be scheduled. */
 export function reminderStatus(mode: ReminderMode, permission: Permission, reminder: string | null): { active: boolean; message: string } {
-  if (mode === 'unsupported') return { active: false, message: "Notifications aren't available on this device. On iPhone, add to Home Screen first." };
-  if (permission === 'denied') return { active: false, message: 'Notifications are blocked for this site, so no reminder can be set. Allow them in your browser settings.' };
-  if (permission !== 'granted') return { active: false, message: 'Pick a time and your browser will ask for permission.' };
-  if (!reminder) return { active: false, message: 'Notifications are allowed. Pick a time.' };
-  return { active: true, message: mode === 'trigger'
-    ? `Reminder set for ${reminder}. It is scheduled on this device and refreshed each time you open the app.`
-    : `Reminder set for ${reminder}. It only fires while this app is open.` };
+  if (mode === 'unsupported') return { active: false, message: t('reminder.unsupported') };
+  if (permission === 'denied') return { active: false, message: t('reminder.denied') };
+  if (permission !== 'granted') return { active: false, message: t('reminder.ask') };
+  if (!reminder) return { active: false, message: t('reminder.allowed') };
+  return { active: true, message: fmt.reminderSet(reminder, mode === 'trigger') };
 }

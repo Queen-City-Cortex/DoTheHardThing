@@ -46,7 +46,7 @@ const OWNER_IMPORTS = {
   'src/storage.ts': ['./logic', './decode'],
   'src/decode.ts': ['./logic'],
   'src/clock.ts': ['./logic', './method'],
-  'src/reminder.ts': ['./logic', './clock'],
+  'src/reminder.ts': ['./logic', './clock', './copy'],
   'src/analytics.ts': ['./logic', './clock', './storage', './events'],
 }
 // Pure modules touch no platform API and import only what is listed here (the method's numbers and the screen copy, for
@@ -73,27 +73,24 @@ const METHOD_SYNTAX = [
   // minutes written as milliseconds, e.g. 10 * 60_000 or 60000 * 10
   { selector: "BinaryExpression[operator='*']:matches([left.type='Literal'][right.raw=/^60_?000$/], [right.type='Literal'][left.raw=/^60_?000$/])", message: RULE_NUMBER },
 ]
-// Screens whose words live in src/copy.ts, by file and function name. Inside these function declarations, text of four or
-// more words written inline (JSX text, a string literal, a template literal part) is copy that went around the module and
-// its transcript checks. A screen joins the table once its strings have moved. Out of scope, so not caught: module-level
-// constants outside the functions, strings of one to three words ('Start', 'Not today'), screens written as arrow
-// functions or moved to another file, and the screens not listed yet (Name, Ask, BlockView, Days, About), which move next.
-// scripts/boundaries.test.mjs fails when a listed function is no longer declared in its file, so a rename or a move
-// cannot drop a screen from the rule without a test saying so.
-export const COPY_SCREENS = {
-  'src/App.tsx': ['FirstWelcome', 'Welcome', 'Pick', 'Close', 'Closed'],
-}
+// The app files whose words live in src/copy.ts. Anywhere in these files, text of four or more words written inline (JSX
+// text, a string literal, a template literal part, in a screen or a module-level constant alike) is copy that went
+// around the module and its transcript checks. A new file under src/ that renders or returns words joins this list.
+// Still not caught: strings of one to three words ('Start', 'Not today'), text in a file not listed here (copy.ts itself,
+// method.ts with its talk quotes, tests, a new file nobody added), and a sentence built by joining short pieces.
+// scripts/boundaries.test.mjs fails when a listed file no longer exists, so a rename or a move cannot drop a file from
+// the rule without a test saying so.
+export const COPY_FILES = ['src/App.tsx', 'src/main.tsx', 'src/logic.ts', 'src/reminder.ts', 'src/storage.ts', 'src/analytics.ts', 'src/clock.ts', 'src/decode.ts', 'src/events.ts']
 const MOVE_TEXT = "Move this text to src/copy.ts and render it with t(id); a talk quote needs kind: 'quote' and its transcript timestamp as ref." +
   ' Not words a person reads (a class list, an event name)? Disable this rule on that one line with the reason.'
 const FOUR_WORDS = '/\\S+\\s+\\S+\\s+\\S+\\s+\\S+/'
 // JSX attributes whose value is never read as words: a class list or id of four tokens is not copy. aria-label and
 // title are read (aloud or on hover), so they stay copy.
 const NOT_COPY_ATTR = 'JSXAttribute[name.name=/^(className|id|key|href|src|rel|target|type|role|name|htmlFor|autoComplete|inputMode|aria-(live|hidden|controls|describedby|labelledby)|data-.+)$/]'
-const copySyntax = (screens) => {
-  const inScreen = `FunctionDeclaration[id.name=/^(${screens.join('|')})$/]`
+const copySyntax = () => {
   const copy = (node) => `${node}:not(${NOT_COPY_ATTR} ${node.split('[')[0]})`
   return [`JSXText[value=${FOUR_WORDS}]`, copy(`Literal[value=${FOUR_WORDS}]`), copy(`TemplateElement[value.raw=${FOUR_WORDS}]`)]
-    .map((node) => ({ selector: `${inScreen} ${node}`, message: MOVE_TEXT }))
+    .map((selector) => ({ selector, message: MOVE_TEXT }))
 }
 const UI_ONLY = { group: ['react', 'react-dom', 'react-dom/*', './App', './main'], message: 'Only .tsx files are UI. Keep React and App out of .ts modules: export a plain function and call it from App.tsx.' }
 const TESTS = ['**/*.test.ts', '**/*.test.tsx']
@@ -117,11 +114,11 @@ function boundaries({ file, ui = false } = {}) {
     'no-restricted-globals': ['error', ...globals],
     'no-restricted-properties': ['error', ...properties],
     'no-restricted-syntax': ['error', ...bans.flatMap((o) => o.syntax.map((selector) => ({ selector, message: o.message }))), ...(file === 'src/method.ts' ? [] : METHOD_SYNTAX),
-      ...(COPY_SCREENS[file] ? copySyntax(COPY_SCREENS[file]) : [])],
+      ...(COPY_FILES.includes(file) ? copySyntax() : [])],
     'no-restricted-imports': ['error', { patterns: imports }],
   }
 }
-const special = [...new Set([...Object.values(OWNERS).map((o) => o.file), ...Object.keys(OWNER_IMPORTS), ...Object.keys(PURE), ...Object.keys(COPY_SCREENS)])]
+const special = [...new Set([...Object.values(OWNERS).map((o) => o.file), ...Object.keys(OWNER_IMPORTS), ...Object.keys(PURE), ...COPY_FILES])]
 
 export default tseslint.config(
   { ignores: ['dist'] },
