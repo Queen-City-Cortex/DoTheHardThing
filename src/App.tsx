@@ -5,19 +5,14 @@ import { track } from './analytics';
 import { askPermission, askPermissionIfUnasked, cancelReminder, notify, readPermission, reminderMode, scheduleReminder } from './reminder';
 import { now as clockNow, isLate, today } from './clock';
 import { BLOCK_CHOICES, BLOCK_MIN, BREAK_LIMIT_MIN, SMALL_BLOCK_DEFAULT } from './method';
-import { BRAND, TALK_URL, fmt, t } from './copy';
+import { BRAND, TALK_URL, fmt, t, type CopyId } from './copy';
 
 type Screen = 'welcome' | 'name' | 'ask' | 'pick' | 'block' | 'close' | 'closed' | 'about' | 'days';
 // About and Your days open over the day's screen and go back to where they were opened from
 const overlay = (s: Screen) => s === 'about' || s === 'days';
 const uid = () => Math.random().toString(36).slice(2, 10);
 // shown on About, one paragraph each: what stays on the device, what is counted (src/analytics.ts, worker/index.ts), Do Not Track, and the host's own visit count
-const PRIVACY = [
-  'What you write stays on this device and is never sent anywhere.',
-  'We keep three anonymous tallies: days started, days finished, and history opened. Each is a plain count plus the country, with no name, number, cookie, or address attached.',
-  'If your browser\u2019s Do Not Track setting is on, we keep no tallies at all.',
-  'Our host, Cloudflare, counts page visits without cookies.',
-];
+const PRIVACY = ['privacy.device', 'privacy.tallies', 'privacy.dnt', 'privacy.host'] as const satisfies readonly CopyId[];
 
 function resumeScreen(d: L.Day): Screen {
   if (d.closed) return 'closed';
@@ -109,7 +104,7 @@ export default function App() {
     const s = L.settle(day.block, now);
     if (s !== day.block) {
       setDay((d) => ({ ...d, block: s, gotBlock: L.autoGotBlock(s, now, d.gotBlock) }));
-      if (s.endReason === 'complete') notify('Your block is done', 'Whenever you are ready, close the day.');
+      if (s.endReason === 'complete') notify(t('notify.title'), t('notify.body'));
       setScreen('close');
     }
   }, [now, day.block]);
@@ -134,7 +129,7 @@ export default function App() {
     <div className="app">
       <header className="top">
         <span className="brand">{BRAND}</span>
-        {overlay(screen) ? <button className="link" onClick={back}>Done</button> : <button className="link" onClick={() => open('about')}>About</button>}
+        {overlay(screen) ? <button className="link" onClick={back}>{t('done')}</button> : <button className="link" onClick={() => open('about')}>{t('about')}</button>}
       </header>
       <main className="main">
         {screen === 'welcome' && <Welcome bad={bad} onStart={() => setScreen('name')} small={small} setSmall={setSmall} />}
@@ -144,10 +139,10 @@ export default function App() {
         {screen === 'pick' && (
           <Pick day={day} small={small} upd={upd} onBack={() => setScreen('ask')} onStart={async (min) => {
             askPermissionIfUnasked();
-            const t = clockNow(); setNow(t); upd({ block: L.startBlock(min, t, small), gotBlock: null }); setScreen('block');
+            const at = clockNow(); setNow(at); upd({ block: L.startBlock(min, at, small), gotBlock: null }); setScreen('block');
           }} />
         )}
-        {screen === 'block' && day.block && <BlockView block={day.block} item={chosen} now={now} set={(b) => { const t = clockNow(); setNow(t); setDay((d) => ({ ...d, block: b, gotBlock: L.autoGotBlock(b, t, d.gotBlock) })); }} />}
+        {screen === 'block' && day.block && <BlockView block={day.block} item={chosen} now={now} set={(b) => { const at = clockNow(); setNow(at); setDay((d) => ({ ...d, block: b, gotBlock: L.autoGotBlock(b, at, d.gotBlock) })); }} />}
         {screen === 'close' && <Close didIt={day.didIt} item={chosen} total={total} onDays={() => open('days')}
           onAnswer={(didIt) => { upd({ didIt, doneText: didIt ? chosen?.text ?? null : null }); if (didIt) track('finished'); }} onDone={() => {
             // closing a day carried past midnight moves straight on to the real today
@@ -159,13 +154,13 @@ export default function App() {
         {screen === 'days' && <Days days={counted.days} archive={counted.archive} onBack={back} />}
         {screen === 'about' && <About reminder={store.reminder} total={total} onDays={() => open('days')} setReminder={(r) => setStore((s) => ({ ...s, reminder: r }))} />}
       </main>
-      {saveFailed && <p className="muted small save-note" role="status">Progress will not be saved on this device.</p>}
+      {saveFailed && <p className="muted small save-note" role="status">{t('saveNote')}</p>}
     </div>
   );
 }
 
 function Steps({ n, at }: { n: number; at: number }) {
-  return <div className="steps" role="img" aria-label={`Step ${at + 1} of ${n}`}>{Array.from({ length: n }, (_, i) => <i key={i} className={i === at ? 'on' : i < at ? 'done' : ''} />)}</div>;
+  return <div className="steps" role="img" aria-label={fmt.steps(at + 1, n)}>{Array.from({ length: n }, (_, i) => <i key={i} className={i === at ? 'on' : i < at ? 'done' : ''} />)}</div>;
 }
 
 // the first-ever visit: the whole method on one screen. Returning variants below are unchanged.
@@ -216,17 +211,17 @@ export function Welcome({ bad, onStart, small, setSmall }: { bad: L.BadDay; onSt
   );
 }
 
-const PHASES: { tag: L.Tag; title: string; hint: string }[] = [
-  { tag: 'pushed', title: 'What have you been putting off?', hint: 'The thing you keep moving to tomorrow. Write it plainly.' },
-  { tag: 'risky', title: 'What could get you rejected, or start a conflict?', hint: 'Most important usually means most uncomfortable, very often with some chance of rejection or conflict.' },
-  { tag: 'anxious', title: 'What else is making you anxious?', hint: 'Whatever else makes you most anxious or uncomfortable.' },
+const PHASES: { tag: L.Tag; title: CopyId; hint: CopyId }[] = [
+  { tag: 'pushed', title: 'name.pushed', hint: 'name.pushed.hint' },
+  { tag: 'risky', title: 'name.risky', hint: 'name.risky.hint' },
+  { tag: 'anxious', title: 'name.anxious', hint: 'name.anxious.hint' },
 ];
 
 function Chip({ tags, pushedCount }: { tags: L.Tag[]; pushedCount: number }) {
   return <span className={`tag ${L.primaryTag(tags)}`}>{L.tagLabel(tags, pushedCount)}</span>;
 }
 
-function Name({ day, history, today, upd, onBack, onNext }: { day: L.Day; history: L.Day[]; today: string; upd: (p: Partial<L.Day>) => void; onBack: () => void; onNext: () => void }) {
+export function Name({ day, history, today, upd, onBack, onNext }: { day: L.Day; history: L.Day[]; today: string; upd: (p: Partial<L.Day>) => void; onBack: () => void; onNext: () => void }) {
   const lefts = useMemo(() => L.leftovers(history, today), [history.length, today]); // eslint-disable-line react-hooks/exhaustive-deps
   const [phase, setPhase] = useState(0);
   const [draft, setDraft] = useState('');
@@ -237,14 +232,14 @@ function Name({ day, history, today, upd, onBack, onNext }: { day: L.Day; histor
   const P = PHASES[phase];
   // leftovers are offered, never carried: nothing comes along unless tapped
   const offering = phase === 0 && lefts.length > 0;
-  const hint = offering ? 'From yesterday, still open. Tap what still matters. The rest stays behind, and nothing comes along unless you choose it.' : P.hint;
-  const has = (t: string) => items.some((i) => L.norm(i.text) === L.norm(t));
+  const hint = t(offering ? 'name.leftovers' : P.hint);
+  const has = (text: string) => items.some((i) => L.norm(i.text) === L.norm(text));
   // a leftover comes back with all its tags: added under the first, then tagged with the rest
   const bringIn = (l: { text: string; tags: L.Tag[]; pushedCount: number }) => {
     const id = uid();
-    upd({ items: l.tags.reduce((xs, t) => L.addItem(xs, l.text, t, id, l.pushedCount), day.items) });
+    upd({ items: l.tags.reduce((xs, tag) => L.addItem(xs, l.text, tag, id, l.pushedCount), day.items) });
   };
-  const remove = (t: string) => upd({ items: day.items.filter((i) => L.norm(i.text) !== L.norm(t)) });
+  const remove = (text: string) => upd({ items: day.items.filter((i) => L.norm(i.text) !== L.norm(text)) });
   const toggle = (i: L.Item) => upd({ items: L.hasTag(i, P.tag) ? L.removeTag(day.items, i.id, P.tag) : L.addOrTag(day.items, i.text, P.tag, uid()).items });
   const full = !L.canAdd(day.items);
   const last = phase === 2;
@@ -254,11 +249,11 @@ function Name({ day, history, today, upd, onBack, onNext }: { day: L.Day; histor
   const commit = () => {
     if (!pending) return true;
     const r = L.addOrTag(day.items, draft, P.tag, uid());
-    if (r.outcome === 'full') { setNote('Five is the limit.'); return false; }
+    if (r.outcome === 'full') { setNote(t('name.full')); return false; }
     if (r.outcome === 'added' || r.outcome === 'tagged') upd({ items: r.items });
     setDraft('');
-    setNote(r.outcome === 'tagged' ? `That one's already on your list. Marked ${P.tag} too.`
-      : r.outcome === 'already' && r.item ? `That one's already on your list as ${L.tagLabel(r.item.tags, r.item.pushedCount)}.` : null);
+    setNote(r.outcome === 'tagged' ? fmt.noteTagged(fmt.tag(P.tag))
+      : r.outcome === 'already' && r.item ? fmt.noteAlready(L.tagLabel(r.item.tags, r.item.pushedCount)) : null);
     return true;
   };
   // the draft never follows into another step's tag
@@ -268,8 +263,8 @@ function Name({ day, history, today, upd, onBack, onNext }: { day: L.Day; histor
   return (
     <section className="card">
       <Steps n={3} at={phase} />
-      <p className="eyebrow">Name the discomfort</p>
-      <h1>{P.title}</h1>
+      <p className="eyebrow">{t('name.eyebrow')}</p>
+      <h1>{t(P.title)}</h1>
       <p className="muted">{hint}</p>
       {offering && (
         <div className="choices">
@@ -282,22 +277,22 @@ function Name({ day, history, today, upd, onBack, onNext }: { day: L.Day; histor
         </div>
       )}
       <form className="adder" onSubmit={(e) => { e.preventDefault(); commit(); }}>
-        <input ref={input} aria-label={P.title} value={draft} disabled={full && !pending} placeholder={full ? 'Five is the limit' : offering ? 'Or write something new' : 'Write it plainly'} enterKeyHint="done"
+        <input ref={input} aria-label={t(P.title)} value={draft} disabled={full && !pending} placeholder={t(full ? 'name.placeholderFull' : offering ? 'name.placeholderNew' : 'name.placeholder')} enterKeyHint="done"
           onChange={(e) => { setDraft(e.target.value); setNote(null); }} />
-        <button className="secondary" disabled={!pending}>Add</button>
+        <button className="secondary" disabled={!pending}>{t('name.add')}</button>
       </form>
       {note && <p className="muted small" role="status">{note}</p>}
       {phase === 0 && items.length > 0 && (
         <ul className="plain">
           {L.guidedOrder(items).map((i) => (
-            <li key={i.id}><span>{i.text}</span><span className="row-end"><Chip tags={i.tags} pushedCount={i.pushedCount} /><button className="icon" aria-label={`Remove ${i.text}`} onClick={() => remove(i.text)}>×</button></span></li>
+            <li key={i.id}><span>{i.text}</span><span className="row-end"><Chip tags={i.tags} pushedCount={i.pushedCount} /><button className="icon" aria-label={fmt.remove(i.text)} onClick={() => remove(i.text)}>×</button></span></li>
           ))}
         </ul>
       )}
       {phase > 0 && items.length > 0 && (
         <>
-          <p className="muted small">Already on your list. Tap one if it fits here too.</p>
-          <div className="choices" role="group" aria-label="Already on your list">
+          <p className="muted small">{t('name.listedTap')}</p>
+          <div className="choices" role="group" aria-label={t('name.listed')}>
             {L.guidedOrder(items).map((i) => {
               const on = L.hasTag(i, P.tag);
               return (
@@ -309,18 +304,18 @@ function Name({ day, history, today, upd, onBack, onNext }: { day: L.Day; histor
           </div>
         </>
       )}
-      {last && L.belowSuggested(day.items) && items.length > 0 && <p className="muted gentle">Three to five usually helps, but fewer is fine if that's honest.</p>}
+      {last && L.belowSuggested(day.items) && items.length > 0 && <p className="muted gentle">{t('name.fewer')}</p>}
       <div className="actions sticky row">
-        <button className="secondary" onClick={() => (phase ? go(phase - 1) : onBack())}>Back</button>
+        <button className="secondary" onClick={() => (phase ? go(phase - 1) : onBack())}>{t('back')}</button>
         <button className="primary" disabled={last && !canFinish} onClick={next}>
-          {last ? 'Two questions' : phase === 0 && !items.length && !pending ? 'Skip' : 'Next'}
+          {t(last ? 'twoQuestions' : phase === 0 && !items.length && !pending ? 'name.skip' : 'next')}
         </button>
       </div>
     </section>
   );
 }
 
-function Ask({ items, setItem, onBack, onDone }: { items: L.Item[]; setItem: (id: string, p: Partial<L.Item>) => void; onBack: () => void; onDone: () => void }) {
+export function Ask({ items, setItem, onBack, onDone }: { items: L.Item[]; setItem: (id: string, p: Partial<L.Item>) => void; onBack: () => void; onDone: () => void }) {
   const [idx, setIdx] = useState(0);
   const mounted = useRef(false);
   useEffect(() => { // the next item's heading takes focus (the first item's is focused by the screen change)
@@ -328,26 +323,26 @@ function Ask({ items, setItem, onBack, onDone }: { items: L.Item[]; setItem: (id
     const h = document.querySelector<HTMLElement>('main h1');
     if (h) { h.tabIndex = -1; h.focus({ preventScroll: true }); }
   }, [idx]);
-  const t = items[idx];
-  if (!t) return null;
-  const yn = (f: 'satisfied' | 'leverage', q: string) => (
-    <div className="q"><p>{q}</p>
+  const it = items[idx];
+  if (!it) return null;
+  const yn = (f: 'satisfied' | 'leverage', q: CopyId) => (
+    <div className="q"><p>{t(q)}</p>
       <div className="yn">
-        <button className={t[f] === true ? 'on' : ''} onClick={() => setItem(t.id, { [f]: true })}>Yes</button>
-        <button className={t[f] === false ? 'on' : ''} onClick={() => setItem(t.id, { [f]: false })}>No</button>
+        <button className={it[f] === true ? 'on' : ''} onClick={() => setItem(it.id, { [f]: true })}>{t('close.yes')}</button>
+        <button className={it[f] === false ? 'on' : ''} onClick={() => setItem(it.id, { [f]: false })}>{t('no')}</button>
       </div></div>
   );
   const last = idx === items.length - 1;
   return (
     <section className="card">
       <Steps n={items.length} at={idx} />
-      <p className="eyebrow">Two questions</p>
-      <h1 className="item-title">{t.text} <Chip tags={t.tags} pushedCount={t.pushedCount} /></h1>
-      {yn('satisfied', 'If this were the only thing I accomplished today, would I be satisfied with my day?')}
-      {yn('leverage', 'Will moving this forward make all the other to-dos unimportant or easier to knock off later?')}
+      <p className="eyebrow">{t('twoQuestions')}</p>
+      <h1 className="item-title">{it.text} <Chip tags={it.tags} pushedCount={it.pushedCount} /></h1>
+      {yn('satisfied', 'ask.satisfied')}
+      {yn('leverage', 'ask.leverage')}
       <div className="actions sticky row">
-        <button className="secondary" onClick={() => (idx ? setIdx(idx - 1) : onBack())}>Back</button>
-        <button className="primary" disabled={!L.answered(t)} onClick={() => (last ? onDone() : setIdx(idx + 1))}>{last ? 'Pick one' : 'Next'}</button>
+        <button className="secondary" onClick={() => (idx ? setIdx(idx - 1) : onBack())}>{t('back')}</button>
+        <button className="primary" disabled={!L.answered(it)} onClick={() => (last ? onDone() : setIdx(idx + 1))}>{t(last ? 'pick.eyebrow' : 'next')}</button>
       </div>
     </section>
   );
@@ -389,30 +384,30 @@ export function Pick({ day, small, upd, onBack, onStart }: { day: L.Day; small: 
   );
 }
 
-function BlockView({ block, item, now, set }: { block: L.Block; item?: L.Item; now: number; set: (b: L.Block) => void }) {
+export function BlockView({ block, item, now, set }: { block: L.Block; item?: L.Item; now: number; set: (b: L.Block) => void }) {
   const paused = block.pausedAt != null;
   const away = paused ? now - block.pausedAt! : 0;
   const canPause = L.canPause(block);
   return (
     <section className="card center">
-      <p className="eyebrow">Your one thing</p>
-      <h1 className="item-title">{item?.text ?? 'The one thing'}</h1>
+      <p className="eyebrow">{t('yourOneThing')}</p>
+      <h1 className="item-title">{item?.text ?? t('block.fallback')}</h1>
       <div className={`block ${paused ? 'paused' : ''}`} role="timer" aria-live="off" style={{ ['--p' as string]: L.progress(block, now) }}>
         <div className="light" aria-hidden="true" />
         <span className="time">{L.formatMs(L.remainingMs(block, now))}</span>
-        <span className="left">{paused ? 'holding' : 'left in the block'}</span>
+        <span className="left">{t(paused ? 'block.holding' : 'block.left')}</span>
       </div>
       {paused ? (
-        <p className="muted small">Stepped away {Math.floor(away / 60000)} min. Back within {BREAK_LIMIT_MIN} to keep it one block. You get one pause per block.</p>
+        <p className="muted small">{fmt.pausedLine(Math.floor(away / 60000), BREAK_LIMIT_MIN)}</p>
       ) : (
-        <p className="muted small">{block.drifts.length ? 'You came back. No need to spiral.' : 'No email, no social. Just this.'}{canPause && ' One short pause if you must, then back.'}</p>
+        <p className="muted small">{t(block.drifts.length ? 'block.drifted' : 'block.focus')}{canPause && ` ${t('block.pauseHint')}`}</p>
       )}
       <div className="actions">
-        {paused ? <button className="primary big" onClick={() => set(L.resume(block, clockNow()))}>I'm back</button>
-          : <button className="primary big" onClick={() => set(L.drift(block, clockNow()))}>Gently come back to your one to-do</button>}
-        {canPause && <button className="secondary" onClick={() => set(L.pause(block, clockNow()))}>Step away briefly</button>}
-        {!paused && !canPause && <p className="muted small">Your one pause is used.</p>}
-        <button className="link" onClick={() => set(L.stop(block, clockNow()))}>End block</button>
+        {paused ? <button className="primary big" onClick={() => set(L.resume(block, clockNow()))}>{t('block.back')}</button>
+          : <button className="primary big" onClick={() => set(L.drift(block, clockNow()))}>{t('block.comeBack')}</button>}
+        {canPause && <button className="secondary" onClick={() => set(L.pause(block, clockNow()))}>{t('block.stepAway')}</button>}
+        {!paused && !canPause && <p className="muted small">{t('block.pauseUsed')}</p>}
+        <button className="link" onClick={() => set(L.stop(block, clockNow()))}>{t('block.end')}</button>
       </div>
     </section>
   );
@@ -474,7 +469,7 @@ export function Closed({ didIt, onDays, onStartOver }: { didIt: boolean | null; 
 }
 
 // only done days are listed and counted; a missed day leaves no row, and no zero is ever shown
-function Days({ days, archive, onBack }: { days: L.Day[]; archive: L.Archive; onBack: () => void }) {
+export function Days({ days, archive, onBack }: { days: L.Day[]; archive: L.Archive; onBack: () => void }) {
   const total = L.totalDone(days, archive);
   const ym = today().slice(0, 7);
   const entries = L.thisMonthEntries(days, ym);
@@ -483,17 +478,17 @@ function Days({ days, archive, onBack }: { days: L.Day[]; archive: L.Archive; on
   const month = (m: string) => (m.slice(0, 4) === ym.slice(0, 4) ? L.monthLabel(m) : `${L.monthLabel(m)} ${m.slice(0, 4)}`);
   return (
     <section className="card">
-      <p className="eyebrow">Your days</p>
-      <h1>Days you did your one thing</h1>
+      <p className="eyebrow">{t('yourDays')}</p>
+      <h1>{t('days.hero')}</h1>
       {total === 0 ? (
-        <p className="muted">Nothing here yet. The first day you answer Yes will appear on this page, with its date and the one thing you did.</p>
+        <p className="muted">{t('days.empty')}</p>
       ) : (
         <>
-          <p className="muted">Only the days you did it are listed. Other days add nothing and need nothing.</p>
-          <Tally line={`${L.daysWord(total)} since you started`} />
+          <p className="muted">{t('days.only')}</p>
+          <Tally line={fmt.daysCount(fmt.daysWord(total))} />
           {entries.length > 0 && (
             <>
-              <p className="label">{L.monthLabel(ym)} &middot; {L.daysWord(L.monthDone(days, archive, ym))}</p>
+              <p className="label">{fmt.monthLine(L.monthLabel(ym), fmt.daysWord(L.monthDone(days, archive, ym)))}</p>
               <ul className="dates" aria-label={L.monthLabel(ym)}>
                 {entries.map((e) => <li key={e.date}><span className="d">{L.dayLabel(e.date)}</span><span className="t">{e.text}</span></li>)}
               </ul>
@@ -501,26 +496,26 @@ function Days({ days, archive, onBack }: { days: L.Day[]; archive: L.Archive; on
           )}
           {earlier.length > 0 && (
             <>
-              <p className="label">Earlier</p>
-              <ul className="months" aria-label="Earlier">
-                {earlier.map((m) => <li key={m.ym}><span>{month(m.ym)}</span><span>{L.daysWord(m.count)}</span></li>)}
+              <p className="label">{t('days.earlier')}</p>
+              <ul className="months" aria-label={t('days.earlier')}>
+                {earlier.map((m) => <li key={m.ym}><span>{month(m.ym)}</span><span>{fmt.daysWord(m.count)}</span></li>)}
               </ul>
             </>
           )}
         </>
       )}
-      <div className="actions"><button className="secondary" onClick={onBack}>Back</button></div>
+      <div className="actions"><button className="secondary" onClick={onBack}>{t('back')}</button></div>
     </section>
   );
 }
 
-function About({ reminder, total, onDays, setReminder }: { reminder: string | null; total: number; onDays: () => void; setReminder: (r: string | null) => void }) {
+export function About({ reminder, total, onDays, setReminder }: { reminder: string | null; total: number; onDays: () => void; setReminder: (r: string | null) => void }) {
   const mode = reminderMode();
   // read on every render; permission can change in browser settings while the app is open, so refresh on focus
   const permission = readPermission();
   const [, setTick] = useState(0);
   useEffect(() => {
-    const refresh = () => setTick((t) => t + 1);
+    const refresh = () => setTick((n) => n + 1);
     const visible = () => { if (document.visibilityState === 'visible') refresh(); };
     window.addEventListener('focus', refresh);
     document.addEventListener('visibilitychange', visible);
@@ -530,32 +525,32 @@ function About({ reminder, total, onDays, setReminder }: { reminder: string | nu
   const off = () => { setReminder(null); cancelReminder(); };
   return (
     <section className="card">
-      <h1>About</h1>
-      <p className="muted">Tim Ferriss's morning method for efficacy, doing the right thing, rather than efficiency: his eight steps, condensed to three. Name what's uncomfortable, pick one thing, protect one block.</p>
-      <blockquote>Being busy is a form of laziness.<cite>Tim Ferriss</cite></blockquote>
+      <h1>{t('about')}</h1>
+      <p className="muted">{t('about.intro')}</p>
+      <blockquote>{t('about.busy')}<cite>{t('cite.tim')}</cite></blockquote>
       <blockquote>{t('guise')}<cite>{t('cite.tim')}</cite></blockquote>
-      <p className="muted">Method by Tim Ferriss. <a href={TALK_URL} target="_blank" rel="noreferrer">{t('talk.link')}</a>.</p>
-      <p className="muted small">An independent app based on Tim Ferriss's method. Not affiliated with or endorsed by him.</p>
+      <p className="muted">{t('about.method')} <a href={TALK_URL} target="_blank" rel="noreferrer">{t('talk.link')}</a>.</p>
+      <p className="muted small">{t('about.independent')}</p>
       {/* the count only once there is one: never a zero */}
-      <button className="row-link" aria-label="Your days" onClick={onDays}><span>Your days</span><span>{total > 0 ? `${total} ›` : '›'}</span></button>
+      <button className="row-link" aria-label={t('yourDays')} onClick={onDays}><span>{t('yourDays')}</span><span>{fmt.daysLink(total)}</span></button>
       <hr className="rule" />
-      <p className="eyebrow">Morning reminder</p>
+      <p className="eyebrow">{t('about.reminder')}</p>
       {mode !== 'unsupported' && (
         <div className="adder">
-          <input type="time" aria-label="Reminder time" value={status.active && reminder ? reminder : ''} disabled={permission === 'denied'} onChange={async (e) => {
+          <input type="time" aria-label={t('about.time')} value={status.active && reminder ? reminder : ''} disabled={permission === 'denied'} onChange={async (e) => {
             const v = e.target.value || null;
             if (!v) { off(); return; }
             const p = readPermission() === 'default' ? await askPermission() : readPermission();
-            setTick((t) => t + 1);
+            setTick((n) => n + 1);
             // only a granted permission saves a time; anything else leaves the reminder unset
             if (p === 'granted') setReminder(v);
           }} />
-          {status.active && <button className="secondary" onClick={off}>Off</button>}
+          {status.active && <button className="secondary" onClick={off}>{t('about.off')}</button>}
         </div>
       )}
       <p className="muted small" role="status">{status.message}</p>
-      <div id="privacy">{PRIVACY.map((t) => <p key={t} className="muted small">{t}</p>)}</div>
-      <p className="muted small">Free and works offline.</p>
+      <div id="privacy">{PRIVACY.map((id) => <p key={id} className="muted small">{t(id)}</p>)}</div>
+      <p className="muted small">{t('about.free')}</p>
     </section>
   );
 }

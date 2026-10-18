@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import * as L from './logic';
 import { BLOCK_MIN } from './method';
+import { fmt } from './copy';
 
 const it_ = (text: string, tag: L.Tag | L.Tag[], s: boolean | null = null, l: boolean | null = null, pushedCount = 0): L.Item => ({ id: text, text, tags: [tag].flat(), satisfied: s, leverage: l, pushedCount });
 const day = (date: string, items: L.Item[], extra: Partial<L.Day> = {}): L.Day => ({ date, openedAt: 0, items, chosenId: null, block: null, gotBlock: null, didIt: null, doneText: null, closed: false, ...extra });
@@ -605,9 +606,9 @@ describe('counts: gentle and up-only', () => {
     expect(L.monthLabel('2026-01')).toBe('January');
     expect(L.dayLabel('2026-10-14')).toBe('Wed 14');
     expect(L.dayLabel('2026-11-01')).toBe('Sun 1');
-    expect(L.daysWord(1)).toBe('1 day');
-    expect(L.daysWord(0)).toBe('0 days');
-    expect(L.daysWord(12)).toBe('12 days');
+    expect(fmt.daysWord(1)).toBe('1 day');
+    expect(fmt.daysWord(0)).toBe('0 days');
+    expect(fmt.daysWord(12)).toBe('12 days');
   });
   it('closeLines: exact copy', () => {
     expect(L.closeLines(null, 5)).toEqual({ note: null, count: null, first: false });

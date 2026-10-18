@@ -8,8 +8,9 @@
 // --retries N: right after a deploy the edge may still serve the old build; retry the failing round N times, 15 s apart.
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
+import { SITE_URL } from '../src/copy.ts'; // Node 22.18+ strips the types, so this still runs as plain `node scripts/verify-live.mjs`
 
-const SITE = (process.env.SITE ?? 'https://dothehardthing.app').replace(/\/$/, '');
+const SITE = (process.env.SITE ?? SITE_URL).replace(/\/$/, '');
 const ri = process.argv.indexOf('--retries');
 const RETRIES = ri > 0 ? Number(process.argv[ri + 1]) || 0 : 0;
 const WAIT_MS = 15_000;

@@ -7,6 +7,7 @@ import { pathToFileURL } from 'node:url';
 import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
+import { DOMAIN_DISPLAY } from '../../src/copy.ts'; // the domain as people read it (Node 22 strips the types)
 
 const APP = process.env.OG_URL || 'http://127.0.0.1:4173';
 const OUT = path.resolve(process.env.OG_OUT || 'public/og-image.png');
@@ -68,7 +69,7 @@ p{font-size:32px;line-height:1.25;color:#2e343b;margin-top:28px}
 .phone{left:748px;top:34px;width:356px;height:620px}
 </style><div class="t"><div class="k sans">A MORNING METHOD</div><h1>Do The<br><i>Hard Thing</i></h1>
 <p>Name what&rsquo;s uncomfortable.<br>Pick one thing.<br>Protect one block.</p></div>
-<div class="url sans">DoTheHardThing.app</div>
+<div class="url sans">${DOMAIN_DISPLAY}</div>
 <div class="phone"><img src="${pathToFileURL(pickPng).href}"></div>`;
 const htmlPath = path.join(tmp, 'card.html');
 fs.writeFileSync(htmlPath, html);
