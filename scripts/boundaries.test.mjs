@@ -7,7 +7,8 @@
 //   (`window.navigator.serviceWorker`, `window.Date.now()`), and reading through a variable (`const k = 'localStorage'; window[k]`).
 //   Imports: a dynamic `import('./clock')` in an owner module, and `./../src/logic` in the worker (the `../src/*` group does not match that spelling).
 //   `const { now } = Date` IS caught (no-restricted-properties handles destructuring).
-// Pure modules: logic.ts may import only ./method and ./copy; method.ts, events.ts and copy.ts import nothing.
+// Pure modules: logic.ts may import only ./method and ./copy; state.ts (the screen state reducer) only ./logic; method.ts,
+// events.ts and copy.ts import nothing.
 // App copy (COPY_FILES): anywhere in the listed files, inline text of 4 or more words is reported, in a screen function,
 // an arrow function or a module-level constant alike. The lint judges each literal part on its own, so not caught: 1 to
 // 3 words, a sentence joined from short pieces (concatenation, `{' '}`-split JSX text, an array `.join(' ')`), a
@@ -34,6 +35,7 @@ const CLOCK = 'Only src/clock.ts reads the device clock. Use now() or today() fr
 const REMINDER = 'Only src/reminder.ts touches Notification and the service worker. Use askPermission, askPermissionIfUnasked, readPermission, notify or scheduleReminder from src/reminder.ts.';
 const PURE = (f) => `${f} is pure: no imports and no DOM. Take the value as an argument;`;
 const LOGIC_PURE = 'src/logic.ts is pure: it may import only ./method, ./copy and no DOM. Take the value as an argument;';
+const STATE_PURE = 'src/state.ts is pure: it may import only ./logic and no DOM. Take the value as an argument; the caller gets it from now()/today() in src/clock.ts';
 const MOVE_TEXT = "Move this text to src/copy.ts and render it with t(id); a talk quote needs kind: 'quote' and its transcript timestamp as ref.";
 const COPY_ESCAPE = 'Not words a person reads (a class list, an event name)? Disable this rule on that one line with the reason.';
 const HOURS = "Late-hour cutoffs are method rules (PRODUCT QUESTION Q1, see docs/architecture.md): use isLate(t, 'welcomeFraming' | 'pickWarning') from src/clock.ts. The hours live in LATE_CUTOFFS in src/method.ts.";
@@ -111,6 +113,19 @@ const BAD = [
   ['src/copy.ts', "import { daysWord } from './logic'; export const x = daysWord;", PURE('src/copy.ts')],
   ['src/copy.ts', 'export const d = document.title;', PURE('src/copy.ts')],
   ['src/logic.ts', "import { load } from './storage'; import { t } from './copy'; export const x = [load, t];", LOGIC_PURE],
+  // the screen state reducer takes the time as `now` and leaves saving, notifying and the words to App.tsx
+  ['src/state.ts', "import { now } from './clock'; export const x = now;", STATE_PURE],
+  ['src/state.ts', "import { load } from './storage'; export const x = load;", STATE_PURE],
+  ['src/state.ts', "import { notify } from './reminder'; export const x = notify;", STATE_PURE],
+  ['src/state.ts', "import { t } from './copy'; export const x = t;", STATE_PURE],
+  ['src/state.ts', "import { useReducer } from 'react'; export const x = useReducer;", STATE_PURE],
+  ['src/state.ts', "import { BLOCK_MIN } from './method'; export const x = BLOCK_MIN;", STATE_PURE],
+  ['src/state.ts', 'export const t = Date.now();', CLOCK],
+  ['src/state.ts', 'export const d = new Date();', CLOCK],
+  ['src/state.ts', "export const s = localStorage.getItem('one-thing:v3');", STORAGE],
+  ['src/state.ts', 'export const p = Notification.permission;', REMINDER],
+  ['src/state.ts', "export const h = document.querySelector('main h1');", STATE_PURE],
+  ['src/state.ts', 'export const s = window.localStorage;', STORAGE],
   // app copy: inline text of 4 or more words anywhere in a listed file (JSX text, a string literal, a template part)
   ['src/App.tsx', 'export function Ask() { return <p>Would I be satisfied today?</p>; }', MOVE_TEXT],
   ['src/App.tsx', "export function About() { return <blockquote>{'Being busy is lazy, maybe.'}</blockquote>; }", MOVE_TEXT],
@@ -201,6 +216,8 @@ const FINE = [
   ['src/clock.ts', "import { dayKey } from './logic'; import { lateAt } from './method'; export const x = [dayKey, lateAt];"],
   ['src/logic.ts', "import { MAX_ITEMS } from './method'; export const x = MAX_ITEMS;"],
   ['src/logic.ts', "import { MAX_ITEMS } from './method'; import { fmt, t } from './copy'; export const x = [MAX_ITEMS, fmt, t];"],
+  ['src/state.ts', "import * as L from './logic'; export const key = (now: number) => L.dayKey(new Date(now));"],
+  ['src/App.tsx', "import { useReducer } from 'react'; import * as S from './state'; import { now } from './clock'; export const x = [useReducer, S.reduce, now];"],
   // copy.ts is where the words live; the app files render them by id; short labels are left alone
   ['src/copy.ts', "export const fmt = { line: (n: number) => `${n} days since you started` };"],
   ['src/App.tsx', "declare const t: (id: string) => string; const PRIVACY = ['privacy.device', 'privacy.host']; export function About() { return <p className=\"muted small wide flush\">{PRIVACY.map(t)}</p>; }"],

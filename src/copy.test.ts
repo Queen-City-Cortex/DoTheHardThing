@@ -189,7 +189,7 @@ const name = (items: L.Item[], history: L.Day[] = []) => text(h(Name, { day: day
 const ask = (items: L.Item[]) => text(h(Ask, { items, setItem: noop, onBack: noop, onDone: noop }));
 const T0 = 1_000_000;
 const blk = (p: Partial<L.Block> = {}): L.Block => ({ ...L.startBlock(120, T0), ...p });
-const block = (b: L.Block, it?: L.Item, now = T0 + 5 * 60_000) => text(h(BlockView, { block: b, item: it, now, set: noop }));
+const block = (b: L.Block, it?: L.Item, now = T0 + 5 * 60_000) => text(h(BlockView, { block: b, item: it, now, act: noop }));
 const done = (date: string, doneText: string | null = 'Ask for the raise') => day([], { date, didIt: true, doneText, closed: true });
 // Your days reads today() for the month, so the clock is set while it renders
 const days = (ds: L.Day[], archive: L.Archive = {}) => {

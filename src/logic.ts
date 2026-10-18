@@ -188,13 +188,6 @@ export function autoGotBlock(b: Block, now: number, prev: boolean | null): boole
 }
 export const isBrokenPause = (b: Block, now: number) => b.pausedAt != null && now - b.pausedAt >= BREAK_LIMIT_MS;
 
-/** Leave the block screen once the block has ended (or if there is none). */
-export function screenForBlock<S extends string>(screen: S, block: Block | null): S | 'close' | 'pick' {
-  if (screen !== 'block') return screen;
-  if (!block) return 'pick';
-  return block.endedAt != null ? 'close' : screen;
-}
-
 export function formatMs(ms: number): string {
   const s = Math.ceil(ms / 1000), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
   const p = (n: number) => String(n).padStart(2, '0');
@@ -236,8 +229,11 @@ export function activeDay(days: Day[], now: number): { day: Day | null; carried:
   return { day: days.find((d) => d.date === today) ?? null, carried: false };
 }
 
+/** The screens that show a day (Base in src/state.ts, which checks the two agree). About and Your days are not one:
+ *  under an overlay, pass the day screen it opened over. */
+export type DayScreen = 'welcome' | 'name' | 'ask' | 'pick' | 'block' | 'close' | 'closed';
 /** While the app stays open: move to the new date unless a block on the open day is still running or being closed. */
-export function shouldRollOver(day: Day, screen: string, now: number): boolean {
+export function shouldRollOver(day: Day, screen: DayScreen, now: number): boolean {
   if (dayKey(new Date(now)) === day.date) return false;
   if (day.closed) return true;
   if (screen === 'block' || screen === 'close') return false;
