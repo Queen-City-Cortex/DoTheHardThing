@@ -3,8 +3,8 @@
 // background_color, or the built CSS's light --paper, differs from the page's light theme-color (index.html owns it),
 // the manifest locks the installed app's orientation, public/_headers does not give `/`, `/index.html` and `/sw.js` a
 // no-cache Cache-Control, a path class the app serves
-// lacks a security header of POLICY (scripts/headers-policy.mjs) or has another value, or a manifest icon is missing
-// from dist. Every failure names the file and the fix.
+// lacks a security header of POLICY (scripts/headers-policy.mjs) or has another value, a manifest icon is missing
+// from dist, or robots.txt is missing, is not plain robots syntax, or _headers gives it a non-text/plain Content-Type. Every failure names the file and the fix.
 // Assumes the site is served from the root (vite `base: '/'`): references are matched as /path.
 // Usage: node scripts/check-dist.mjs [distDir]
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
@@ -96,9 +96,23 @@ for (const [name, want] of Object.entries(POLICY)) {
   for (const [k, ps] of wrong) problems.push(`public/_headers gives ${ps.join(', ')} ${k}, want \`${display(name)}: ${want}\`: give the \`/*\` rule exactly that line, and no other matching rule the same header (POLICY in scripts/headers-policy.mjs)`);
 }
 
+// 5. robots.txt: a real file, so Cloudflare serves it (text/plain) before the SPA fallback would answer the app HTML.
+//    Cheap checks only: it exists, has a User-agent line, every other line is a `Field: value` or a comment, and holds no
+//    HTML; _headers does not give it another Content-Type. The service worker never serves it to crawlers (they run none).
+if (!existsSync(join(dist, 'robots.txt'))) problems.push(`${dist}/robots.txt is missing, so /robots.txt gets the app HTML from the SPA fallback: add public/robots.txt (User-agent: * and Allow: /)`);
+else {
+  const robots = read('robots.txt');
+  const bad = robots.split('\n').map((l) => l.replace(/#.*/, '').trim()).filter((l) => l && !/^[A-Za-z][A-Za-z-]*\s*:/.test(l));
+  if (/<html/i.test(robots)) problems.push(`${dist}/robots.txt contains <html, not robots rules: put plain robots lines in public/robots.txt (User-agent: * and Allow: /)`);
+  else if (!/^user-agent\s*:/im.test(robots)) problems.push(`${dist}/robots.txt has no User-agent line: start public/robots.txt with \`User-agent: *\``);
+  else if (bad.length) problems.push(`${dist}/robots.txt has a line that is not \`Field: value\` or a comment (${JSON.stringify(bad[0])}): fix public/robots.txt`);
+}
+const robotsType = headersFor(rules, '/robots.txt').get('content-type');
+if (robotsType !== undefined && !/^text\/plain\b/i.test(robotsType.trim())) problems.push(`public/_headers gives /robots.txt \`Content-Type: ${robotsType}\`: remove that line, so Cloudflare serves the file as text/plain`);
+
 if (problems.length) {
   for (const p of problems) console.error(`check:dist FAIL: ${p}`);
   console.error(`check:dist: ${problems.length} problem(s) in ${dist}`);
   process.exit(1);
 }
-console.log(`check:dist OK: ${precache.size} precache entries cover ${needed.size} needed files; manifest colors match the page; no orientation lock; manifest icons present; the app shell is served with no-cache; ${paths.length} path classes get the ${Object.keys(POLICY).length} security headers`);
+console.log(`check:dist OK: ${precache.size} precache entries cover ${needed.size} needed files; manifest colors match the page; no orientation lock; manifest icons present; the app shell is served with no-cache; ${paths.length} path classes get the ${Object.keys(POLICY).length} security headers; robots.txt is plain robots rules`);

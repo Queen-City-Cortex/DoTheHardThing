@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 
 const SCRIPT = fileURLToPath(new URL('./verify-live.mjs', import.meta.url));
 const MANIFEST = JSON.stringify({ name: 'Do The Hard Thing', theme_color: '#f4f3ef' });
+const ROBOTS = 'User-agent: *\nAllow: /\n';
 const HEADERS = '/*\n  X-Frame-Options: DENY\n  Referrer-Policy: strict-origin-when-cross-origin\n/\n  Cache-Control: no-cache\n';
 const ROOT = { 'content-type': 'text/html', 'x-frame-options': 'DENY', 'referrer-policy': 'strict-origin-when-cross-origin', 'cache-control': 'no-cache' };
 const page = (entry) => `<!doctype html><html><head><script type="module" src="/${entry}"></script></head><body><div id="root"></div></body></html>`;
@@ -26,6 +27,7 @@ function localDist({ dist = true } = {}) {
     writeFileSync(join(dir, 'dist/sw.js'), 'precache');
     writeFileSync(join(dir, 'dist/manifest.webmanifest'), MANIFEST);
     writeFileSync(join(dir, 'dist/_headers'), HEADERS);
+    writeFileSync(join(dir, 'dist/robots.txt'), ROBOTS);
   }
   return dir;
 }
@@ -38,6 +40,7 @@ async function site(overrides = {}) {
     '/og-image.png': { status: 200, headers: { 'content-type': 'image/png' }, body: 'png' },
     '/sw.js': { status: 200, headers: { 'content-type': 'text/javascript' }, body: 'precache' },
     '/manifest.webmanifest': { status: 200, headers: { 'content-type': 'application/manifest+json' }, body: MANIFEST },
+    '/robots.txt': { status: 200, headers: { 'content-type': 'text/plain; charset=utf-8' }, body: ROBOTS },
     ...overrides,
   };
   const methods = [];
@@ -69,6 +72,7 @@ describe('verify:live', () => {
     for (const args of [[], ['--post-deploy']]) {
       const r = await run(localDist(), { SITE: s.url }, args);
       expect(r.out).toContain('OK    manifest.webmanifest 200, equal to dist/manifest.webmanifest');
+      expect(r.out).toContain('OK    robots.txt 200 text/plain; charset=utf-8, equal to dist/robots.txt');
       expect(r.out).toContain('OK    / gets the 3 headers dist/_headers gives it (X-Frame-Options, Referrer-Policy, Cache-Control)');
       expect(r.out).toContain('INFO  / has no strict-transport-security, left out on purpose');
       expect(r.out).not.toContain('PENDING');
@@ -79,11 +83,12 @@ describe('verify:live', () => {
     expect(new Set(s.methods)).toEqual(new Set(['GET']));
   });
 
-  // the live site before the deploy of a change to _headers or the manifest alone: the same entry script (no JS
-  // changed), the old headers and the old manifest
+  // the live site before the deploy of a change to _headers, the manifest or robots.txt alone: the same entry script
+  // (no JS changed), the old headers, the old manifest, and the SPA fallback's app HTML for /robots.txt
   const currentLive = () => site({
     '/': { status: 200, headers: { 'content-type': 'text/html', 'cache-control': 'no-cache' }, body: page('assets/index-THIS.js') },
     '/manifest.webmanifest': { status: 200, headers: {}, body: JSON.stringify({ theme_color: '#1f2329' }) },
+    '/robots.txt': { status: 200, headers: { 'content-type': 'text/html' }, body: page('assets/index-THIS.js') },
   });
   it('reports the new checks PENDING and exits 0 against the current live site without --post-deploy', async () => {
     const s = await currentLive();
@@ -91,8 +96,9 @@ describe('verify:live', () => {
     expect(r.out).toContain('OK    live entry assets/index-THIS.js equals dist/index.html');
     expect(r.out).toContain('PENDING manifest.webmanifest: live manifest.webmanifest (theme_color #1f2329');
     expect(r.out).toContain('PENDING headers on /: / does not get what dist/_headers gives it: X-Frame-Options: (none), want DENY; Referrer-Policy: (none), want strict-origin-when-cross-origin; run with --post-deploy after the deploy');
+    expect(r.out).toContain('PENDING robots.txt: GET /robots.txt is 200 text/html, want 200 text/plain (the SPA fallback answered: robots.txt is not deployed); run with --post-deploy after the deploy');
     expect(r.out).not.toContain('FAIL');
-    expect(r.out).toContain('(2 pending)');
+    expect(r.out).toContain('(3 pending)');
     expect(r.status).toBe(0);
     expect(new Set(s.methods)).toEqual(new Set(['GET']));
   });
@@ -102,6 +108,7 @@ describe('verify:live', () => {
     expect(r.out).toContain('FAIL  live manifest.webmanifest (theme_color #1f2329');
     expect(r.out).toContain('!= dist/manifest.webmanifest (theme_color #f4f3ef');
     expect(r.out).toContain('FAIL  / does not get what dist/_headers gives it: X-Frame-Options: (none), want DENY; Referrer-Policy: (none), want strict-origin-when-cross-origin');
+    expect(r.out).toContain('FAIL  GET /robots.txt is 200 text/html, want 200 text/plain (the SPA fallback answered: robots.txt is not deployed)');
     expect(r.out).not.toContain('PENDING');
     expect(r.status).toBe(1);
     expect(new Set(s.methods)).toEqual(new Set(['GET']));
@@ -111,6 +118,19 @@ describe('verify:live', () => {
     const r = await run(localDist(), { SITE: s.url }, ['--post-deploy']);
     expect(r.status).toBe(1);
     expect(r.out).toContain('FAIL  / does not get what dist/_headers gives it: X-Frame-Options: SAMEORIGIN, want DENY; Referrer-Policy: (none), want strict-origin-when-cross-origin');
+  });
+  it('with --post-deploy fails when robots.txt is text/plain but not these bytes, or missing; PENDING without the flag', async () => {
+    const s = await site({ '/robots.txt': { status: 200, headers: { 'content-type': 'text/plain' }, body: 'User-agent: *\nDisallow: /\n' } });
+    const r = await run(localDist(), { SITE: s.url }, ['--post-deploy']);
+    expect(r.status).toBe(1);
+    expect(r.out).toMatch(/FAIL {2}live robots\.txt \(26 bytes, sha \w+\) != dist\/robots\.txt \(23 bytes, sha \w+\): a stale deploy/);
+    const p = await run(localDist(), { SITE: s.url });
+    expect(p.out).toContain('PENDING robots.txt: live robots.txt (26 bytes');
+    expect(p.status).toBe(0);
+    const gone = await site({ '/robots.txt': { status: 404, headers: { 'content-type': 'text/plain' }, body: '' } });
+    const g = await run(localDist(), { SITE: gone.url }, ['--post-deploy']);
+    expect(g.out).toContain('FAIL  GET /robots.txt is 404 text/plain, want 200 text/plain');
+    expect(new Set([...s.methods, ...gone.methods])).toEqual(new Set(['GET']));
   });
   it('never fails on extra headers, and compares names case-insensitively and values with whitespace collapsed', async () => {
     const s = await site({ '/': { status: 200, headers: { ...ROOT, 'referrer-policy': undefined, 'Referrer-Policy': 'strict-origin-when-cross-origin', 'cache-control': '  no-cache ', server: 'edge', 'x-extra': '1' }, body: page('assets/index-THIS.js') } });
@@ -130,10 +150,12 @@ describe('verify:live', () => {
     const dir = localDist({ dist: false });
     mkdirSync(join(dir, 'public'));
     writeFileSync(join(dir, 'public/_headers'), HEADERS);
+    writeFileSync(join(dir, 'public/robots.txt'), ROBOTS);
     const s = await site();
     const r = await run(dir, { SITE: s.url });
     expect(r.out).toContain('PENDING manifest.webmanifest: no dist/manifest.webmanifest to compare with (run npm run build first); run with --post-deploy after the deploy');
     expect(r.out).toContain('OK    / gets the 3 headers public/_headers gives it');
+    expect(r.out).toContain('OK    robots.txt 200 text/plain; charset=utf-8, equal to public/robots.txt');
     expect(r.status).toBe(0);
     const strict = await run(dir, { SITE: s.url }, ['--post-deploy']);
     expect(strict.out).toContain('FAIL  no dist/manifest.webmanifest to compare with');

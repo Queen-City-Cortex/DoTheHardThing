@@ -5,11 +5,12 @@
 // entry script (so this is the build you just made); GET /api/event is 405 (the Worker answers, not the SPA fallback);
 // /og-image.png is image/png with the same bytes as public/og-image.png; /sw.js is served (and equals dist/sw.js when
 // dist exists). INFO lines report the headers left out on purpose (LEFT_OUT in scripts/headers-policy.mjs).
-// Checks of this build's files (the manifest; the headers on /, which must equal what dist/_headers gives `/`, or
+// Checks of this build's files (the manifest; robots.txt, which must be 200 text/plain with the bytes of dist/robots.txt,
+// or public/robots.txt without a dist; the headers on /, which must equal what dist/_headers gives `/`, or
 // public/_headers without a dist, content-type aside, compared per name with whitespace collapsed) are strict only with
 // --post-deploy ("I just deployed this build; live must now serve what dist says"): then a mismatch is a FAIL. Without
 // it a mismatch prints PENDING, which never fails the run on its own, so the checks can run against the current live
-// site before a deploy. The entry script cannot tell: a change to _headers or the manifest alone leaves it the same.
+// site before a deploy. The entry script cannot tell: a change to _headers, the manifest or robots.txt alone leaves it the same.
 // --www (opt in; CI does not pass it): GET https://www.<SITE host> `/` and `/?x=1` without following redirects and want a
 // 301 to SITE plus the same path and query (docs/www-redirect.md). Only when SITE is the production apex; another SITE
 // skips it with a note. The www origin can be overridden with WWW_SITE (the tests point it at a local server). A www that
@@ -84,6 +85,17 @@ async function round() {
       : mf.res.status !== 200 ? `GET /manifest.webmanifest is ${mf.res.status}, want 200`
         : !mf.body.equals(wantMf) ? `live manifest.webmanifest (theme_color ${themeOf(mf.body)}, sha ${sha(mf.body)}) != dist/manifest.webmanifest (theme_color ${themeOf(wantMf)}, sha ${sha(wantMf)}): a stale deploy` : null,
     'manifest.webmanifest 200, equal to dist/manifest.webmanifest');
+
+  // robots.txt is a static file: before it was deployed the SPA fallback answered it with the app HTML
+  const rb = await get('/robots.txt');
+  const robotsFile = ['dist/robots.txt', 'public/robots.txt'].find((f) => existsSync(f));
+  const wantRb = robotsFile ? readFileSync(robotsFile) : null;
+  const rbType = rb.res.headers.get('content-type') ?? '(no content-type)';
+  ofBuild('robots.txt',
+    !wantRb ? 'no dist/robots.txt or public/robots.txt to compare with'
+      : rb.res.status !== 200 || !rbType.startsWith('text/plain') ? `GET /robots.txt is ${rb.res.status} ${rbType}, want 200 text/plain${rbType.startsWith('text/html') ? ' (the SPA fallback answered: robots.txt is not deployed)' : ''}`
+        : !rb.body.equals(wantRb) ? `live robots.txt (${rb.body.length} bytes, sha ${sha(rb.body)}) != ${robotsFile} (${wantRb.length} bytes, sha ${sha(wantRb)}): a stale deploy` : null,
+    `robots.txt 200 ${rbType}, equal to ${robotsFile}`);
 
   // the edge may add headers of its own (server, cf-ray, ...): only the ones _headers gives `/` are compared
   const h = home.res.headers;

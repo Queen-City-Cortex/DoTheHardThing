@@ -11,7 +11,7 @@ const SECURITY = '  X-Content-Type-Options: nosniff\n  Referrer-Policy: strict-o
 const HEADERS = '/*\n' + SECURITY + '/\n  Cache-Control: no-cache\n/sw.js\n  Cache-Control: no-cache\n/index.html\n  Cache-Control: no-cache\n/assets/*\n  Cache-Control: public, max-age=31536000, immutable\n';
 const dirs = [];
 
-function build({ precache = ['assets/app.js', 'assets/app.css', 'assets/font.woff2', 'index.html'], headers = HEADERS, themeColor = '#f4f3ef', backgroundColor = '#f4f3ef', css = '@font-face{src:url(/assets/font.woff2)}:root{--paper:#f4f3ef}@media (prefers-color-scheme:dark){:root{--paper:#15181d}}', icon = true, meta = '<meta name="theme-color" content="#f4f3ef">', extraLink = '', manifestExtra = {} } = {}) {
+function build({ precache = ['assets/app.js', 'assets/app.css', 'assets/font.woff2', 'index.html'], headers = HEADERS, themeColor = '#f4f3ef', backgroundColor = '#f4f3ef', css = '@font-face{src:url(/assets/font.woff2)}:root{--paper:#f4f3ef}@media (prefers-color-scheme:dark){:root{--paper:#15181d}}', icon = true, meta = '<meta name="theme-color" content="#f4f3ef">', extraLink = '', manifestExtra = {}, robots = 'User-agent: *\nAllow: /\n' } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'check-dist-'));
   dirs.push(dir);
   mkdirSync(join(dir, 'assets'));
@@ -23,6 +23,7 @@ function build({ precache = ['assets/app.js', 'assets/app.css', 'assets/font.wof
   writeFileSync(join(dir, 'manifest.webmanifest'), JSON.stringify({ theme_color: themeColor, background_color: backgroundColor, icons: [{ src: 'pwa-192.png', sizes: '192x192' }], ...manifestExtra }));
   writeFileSync(join(dir, 'sw.js'), `precacheAndRoute([${precache.map((u) => `{url:"${u}",revision:null}`).join(',')}])`);
   writeFileSync(join(dir, '_headers'), headers);
+  if (robots !== null) writeFileSync(join(dir, 'robots.txt'), robots);
   return spawnSync(process.execPath, [SCRIPT, dir], { encoding: 'utf8' });
 }
 
@@ -150,5 +151,33 @@ describe('check:dist, orientation', () => {
   it('passes with any, natural, or no orientation', () => {
     for (const o of ['any', 'natural']) expect(build({ manifestExtra: { orientation: o } }).status, o).toBe(0);
     expect(build().stdout).toContain('no orientation lock');
+  });
+});
+
+describe('check:dist, robots.txt', () => {
+  it('fails when robots.txt is missing (the state before it: the SPA fallback answers HTML), naming the fix', () => {
+    const r = build({ robots: null });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('/robots.txt is missing, so /robots.txt gets the app HTML from the SPA fallback: add public/robots.txt (User-agent: * and Allow: /)');
+  });
+  it('fails when it holds HTML', () => {
+    const r = build({ robots: '<!doctype html><html><body><div id="root"></div></body></html>\n' });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('robots.txt contains <html, not robots rules');
+  });
+  it('fails without a User-agent line, and on a line that is not Field: value', () => {
+    expect(build({ robots: 'Allow: /\n' }).stderr).toContain('robots.txt has no User-agent line');
+    const r = build({ robots: 'User-agent: *\nAllow /\n' });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('robots.txt has a line that is not `Field: value` or a comment ("Allow /")');
+  });
+  it('passes with comments and blank lines', () => {
+    expect(build({ robots: '# crawlers\nUser-agent: *\n\nAllow: / # all\n' }).status).toBe(0);
+  });
+  it('fails when _headers would serve it as HTML', () => {
+    const r = build({ headers: HEADERS + '/robots.txt\n  Content-Type: text/html\n' });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('public/_headers gives /robots.txt `Content-Type: text/html`: remove that line');
+    expect(build({ headers: HEADERS + '/robots.txt\n  Content-Type: text/plain; charset=utf-8\n' }).status).toBe(0);
   });
 });
