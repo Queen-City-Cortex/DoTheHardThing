@@ -4,7 +4,10 @@
 //   node scripts/check-og.mjs           no browser, any machine: fails when the inputs changed but the png did not, or when the
 //                                       png is not the one recorded
 //   node scripts/check-og.mjs --write   after rebuilding the card (and looking at it): record its inputs and png hash. Refuses
-//                                       when the inputs changed and the png did not, so a stale png cannot be recorded as current
+//                                       when the inputs changed and the png did not, so a stale png cannot be recorded as current,
+//                                       and refuses when there is no record yet (nothing then says the png is not stale)
+//   node scripts/check-og.mjs --init    the first record only, after building the card and looking at it: writes the record
+//                                       when none exists, refuses when one does
 //   node scripts/check-og.mjs --pixels  LOCAL ONLY, never in CI: re-renders the card with card.mjs against a preview of the current
 //                                       build at OG_URL (default http://127.0.0.1:4173) and counts the pixels that differ from the
 //                                       committed png by more than OG_TOL (default 16 of 255 on any channel); exit 1 above OG_MAX
@@ -15,6 +18,8 @@
 // Inputs: the bytes of scripts/og/card.mjs (layout, the card's own text, the example items), the font files it embeds (read from
 // its font() calls), the copy the phone shows (CARD_COPY), the copy constants (CARD_CONSTANTS) and the Pick block lengths
 // (BLOCK_CHOICES.full in src/method.ts). Not inputs: CSS and layout of the Pick screen; a change there does not trigger this.
+// Every pick.* and tag.* id in src/copy.ts is either in CARD_COPY or in NOT_ON_CARD with the reason, so a new Pick line fails
+// here until someone decides whether the card shows it (no browser needed).
 // OG_ROOT points it at another tree, for the tests.
 import fs from 'node:fs';
 import os from 'node:os';
@@ -37,9 +42,21 @@ const RECORD = 'scripts/og/og-image.inputs.json';
 // the talk line, the tag chips of the example items, the length label and the block line (fmt.pickLine(false, false));
 // `Start the block` is below the crop
 export const CARD_COPY = ['about', 'pick.eyebrow', 'pick.hero', 'pick.ten', 'tag.risky', 'tag.pushed', 'pick.howLong', 'pick.full', 'pick.early', 'pick.slide'];
+// the pick.* and tag.* ids the card does not show, each with the reason
+export const NOT_ON_CARD = {
+  'pick.lengthLabel': 'the aria-label of the block length group, not visible text',
+  'pick.smallNote': 'shown only with the shorter block; the card shows the full block',
+  'pick.small': 'the block line of the shorter block; the card shows the full one (pick.full)',
+  'pick.late': 'the block line after the late cutoff; the card is at 07:15',
+  'pick.start': 'the button is below the phone\'s crop',
+  'tag.anxious': 'no example item on the card is tagged anxious',
+};
 // BRAND is the phone's header; DOMAIN_DISPLAY is on the card itself (card.mjs imports it)
 export const CARD_CONSTANTS = ['BRAND', 'DOMAIN_DISPLAY'];
-const HOW = 'rebuild the card (npm run build, npx vite preview --port 4173, node scripts/og/card.mjs), look at it, then run node scripts/check-og.mjs --write';
+const REBUILD = 'rebuild the card (npm run build, npx vite preview --port 4173, node scripts/og/card.mjs), look at it, then run node scripts/check-og.mjs';
+const HOW = `${REBUILD} --write`;
+const HOW_INIT = `${REBUILD} --init (--write only updates an existing record)`;
+const FONT_NOTE = 'a font file changed (did a dependency update change @fontsource?): the card has to be rebuilt locally';
 const at = (f) => path.join(ROOT, f);
 const sha = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
 const fail = (msg) => { console.error(`check:og FAIL: ${msg}`); process.exit(1); };
@@ -52,20 +69,33 @@ if (!nm || !fonts.length) fail(`cannot find the fonts in ${CARD} (const NM = pat
 const imported = cardSrc.match(/import \{([^}]+)\} from '[^']*src\/copy\.ts'/)?.[1].split(',').map((s) => s.trim()).filter(Boolean) ?? [];
 for (const name of imported) if (!CARD_CONSTANTS.includes(name)) fail(`${CARD} imports ${name} from src/copy.ts, which is not an input: add it to CARD_CONSTANTS in scripts/check-og.mjs`);
 
+for (const f of fonts) if (!fs.existsSync(at(f))) fail(`${f} is missing: run npm ci (${CARD} embeds it)`);
+
 const copy = await import(pathToFileURL(at('src/copy.ts')).href);
 const { BLOCK_CHOICES } = await import(pathToFileURL(at('src/method.ts')).href);
+// every Pick line and tag word is on the card or in NOT_ON_CARD, so a new one cannot slip past the record
+const known = [];
+for (const id of Object.keys(copy.COPY)) if (/^(pick|tag)\./.test(id) && !CARD_COPY.includes(id) && !Object.hasOwn(NOT_ON_CARD, id))
+  known.push(`'${id}' is a Pick line in src/copy.ts that check:og does not know about: if the card shows it, add it to CARD_COPY in scripts/check-og.mjs (then rebuild the card and run --write); if not, add it to NOT_ON_CARD there with the reason`);
+for (const id of Object.keys(NOT_ON_CARD)) {
+  if (!Object.hasOwn(copy.COPY, id)) known.push(`NOT_ON_CARD has '${id}', which is not an id in src/copy.ts: drop it from scripts/check-og.mjs`);
+  if (CARD_COPY.includes(id)) known.push(`'${id}' is in both CARD_COPY and NOT_ON_CARD in scripts/check-og.mjs: keep one`);
+}
+if (known.length) fail(known.join('\n  '));
 function inputs() {
   const files = Object.fromEntries([CARD, ...fonts].map((f) => [f, sha(fs.readFileSync(at(f)))]));
   const constants = Object.fromEntries(CARD_CONSTANTS.map((c) => [c, copy[c]]));
-  const text = Object.fromEntries(CARD_COPY.map((id) => [id, copy.COPY[id]?.text ?? fail(`CARD_COPY has '${id}', which is not an id in src/copy.ts`)]));
+  const text = Object.fromEntries(CARD_COPY.map((id) => [id, (Object.hasOwn(copy.COPY, id) ? copy.COPY[id].text : fail(`CARD_COPY has '${id}', which is not an id in src/copy.ts`))]));
   return { files, constants, copy: text, blockChoices: [...BLOCK_CHOICES.full] };
 }
 function diffInputs(was, now) {
   const out = [];
-  for (const [f, h] of Object.entries(now.files)) if (was.files?.[f] !== h) out.push(`${f} changed`);
+  for (const [f, h] of Object.entries(now.files)) if (was.files?.[f] !== h) out.push(`${f} changed${f.startsWith('node_modules/') && was.files?.[f] ? `: ${FONT_NOTE}` : ''}`);
   for (const f of Object.keys(was.files ?? {})) if (!(f in now.files)) out.push(`${f} is no longer an input`);
   for (const [c, v] of Object.entries(now.constants)) if (was.constants?.[c] !== v) out.push(`constant ${c}: ${JSON.stringify(was.constants?.[c] ?? null)} is now ${JSON.stringify(v)}`);
+  for (const c of Object.keys(was.constants ?? {})) if (!Object.hasOwn(now.constants, c)) out.push(`constant ${c}: ${JSON.stringify(was.constants[c])} is in the record but no longer an input`);
   for (const [id, v] of Object.entries(now.copy)) if (was.copy?.[id] !== v) out.push(`copy ${id}: ${JSON.stringify(was.copy?.[id] ?? null)} is now ${JSON.stringify(v)}`);
+  for (const id of Object.keys(was.copy ?? {})) if (!Object.hasOwn(now.copy, id)) out.push(`copy ${id}: ${JSON.stringify(was.copy[id])} is in the record but no longer an input`);
   if (JSON.stringify(was.blockChoices) !== JSON.stringify(now.blockChoices)) out.push(`block lengths (BLOCK_CHOICES.full in src/method.ts): ${JSON.stringify(was.blockChoices ?? null)} are now ${JSON.stringify(now.blockChoices)}`);
   return out;
 }
@@ -114,17 +144,18 @@ if (args.includes('--pixels')) {
 }
 
 const now = inputs(); const png = sha(fs.readFileSync(at(PNG)));
-if (!fs.existsSync(at(RECORD))) {
-  if (!args.includes('--write')) fail(`${RECORD} is missing, so nothing says what ${PNG} was built from: ${HOW}`);
-}
-const rec = fs.existsSync(at(RECORD)) ? JSON.parse(fs.readFileSync(at(RECORD), 'utf8')) : null;
+const exists = fs.existsSync(at(RECORD));
+if (args.includes('--init') && exists) fail(`${RECORD} already exists; use --write to update it after a rebuild`);
+if (!exists && args.includes('--write')) fail(`${RECORD} is missing, and --write only updates an existing record, so it will not vouch for whatever ${PNG} is there. For the first record: ${REBUILD} --init`);
+if (!exists && !args.includes('--init')) fail(`${RECORD} is missing, so nothing says what ${PNG} was built from: ${HOW_INIT}`);
+const rec = exists ? JSON.parse(fs.readFileSync(at(RECORD), 'utf8')) : null;
 const changed = rec ? diffInputs(rec.inputs ?? {}, now) : [];
 const pngChanged = rec ? rec.png !== png : true;
 const stale = `the card's inputs changed but ${PNG} did not, so it shows old text:\n  ${changed.join('\n  ')}\n${HOW}`;
-if (args.includes('--write')) {
+if (args.includes('--write') || args.includes('--init')) {
   if (rec && changed.length && !pngChanged) fail(stale);
   if (rec && !changed.length && !pngChanged) { console.log(`check-og: ${RECORD} is already current (png ${png.slice(0, 12)}); nothing written`); process.exit(0); }
-  const record = { note: `written by node scripts/check-og.mjs --write after rebuilding ${PNG} with ${CARD}: the inputs the png was built from and its sha256`, png, inputs: now };
+  const record = { note: `written by node scripts/check-og.mjs --write (or --init) after rebuilding ${PNG} with ${CARD}: the inputs the png was built from and its sha256`, png, inputs: now };
   const text = JSON.stringify(record, null, 2) + '\n';
   const back = JSON.parse(text);
   if (back.png !== png || diffInputs(back.inputs, inputs()).length) fail(`the record would not match the current inputs (${diffInputs(back.inputs, inputs()).join('; ')}); not written`);

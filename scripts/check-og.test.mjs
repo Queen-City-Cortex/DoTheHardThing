@@ -9,12 +9,15 @@ import { afterAll, describe, expect, it } from 'vitest';
 
 const SCRIPT = fileURLToPath(new URL('./check-og.mjs', import.meta.url));
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
-const CARD_COPY = [...readFileSync(SCRIPT, 'utf8').match(/export const CARD_COPY = \[([^\]]+)\]/)[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
+const SRC = readFileSync(SCRIPT, 'utf8');
+const CARD_COPY = [...SRC.match(/export const CARD_COPY = \[([^\]]+)\]/)[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
+// the keys of NOT_ON_CARD, so the fixture's copy module has every pick.* and tag.* id the script knows about
+const NOT_ON_CARD = [...SRC.match(/export const NOT_ON_CARD = \{([^}]+)\}/)?.[1].matchAll(/^\s*'([^']+)':/gm) ?? []].map((m) => m[1]);
 const RECORD = 'scripts/og/og-image.inputs.json';
 const dirs = [];
 afterAll(() => { for (const d of dirs) rmSync(d, { recursive: true, force: true }); });
 
-const copyModule = (text, domain = 'Example.app') => `export const BRAND = 'Brand';\nexport const DOMAIN_DISPLAY = '${domain}';\nexport const COPY = {\n${CARD_COPY.map((id) => `  '${id}': { kind: 'own', text: ${JSON.stringify(text[id] ?? `text of ${id}`)} },`).join('\n')}\n};\n`;
+const copyModule = (text, domain = 'Example.app', ids = [...CARD_COPY, ...NOT_ON_CARD]) => `export const BRAND = 'Brand';\nexport const DOMAIN_DISPLAY = '${domain}';\nexport const COPY = {\n${ids.map((id) => `  '${id}': { kind: 'own', text: ${JSON.stringify(text[id] ?? `text of ${id}`)} },`).join('\n')}\n};\n`;
 const CARD = "import { DOMAIN_DISPLAY } from '../../src/copy.ts';\nconst NM = path.resolve('node_modules/@fontsource-variable');\nfont('serif', 'serif.woff2'); font('sans', 'sans.woff2');\n";
 
 /** A fresh fixture tree with its record written by --write, as after a real rebuild. */
@@ -37,7 +40,7 @@ function tree() {
     run: (...flags) => { const r = spawnSync(process.execPath, [SCRIPT, ...flags], { encoding: 'utf8', env: { ...process.env, OG_ROOT: dir } }); return { status: r.status, out: r.stdout + r.stderr }; },
   };
   for (const [f, s] of Object.entries(files)) fx.write(f, s);
-  expect(fx.run('--write').status).toBe(0);
+  expect(fx.run('--init').status).toBe(0);
   return fx;
 }
 
@@ -79,7 +82,7 @@ describe('check:og', () => {
   it('fails a changed card template, a changed font, a changed constant and changed block lengths', () => {
     const cases = [
       [(fx) => fx.write('scripts/og/card.mjs', CARD + '// a new line\n'), 'scripts/og/card.mjs changed'],
-      [(fx) => fx.write('node_modules/@fontsource-variable/sans/files/sans.woff2', 'sans-2'), 'node_modules/@fontsource-variable/sans/files/sans.woff2 changed'],
+      [(fx) => fx.write('node_modules/@fontsource-variable/sans/files/sans.woff2', 'sans-2'), 'node_modules/@fontsource-variable/sans/files/sans.woff2 changed: a font file changed (did a dependency update change @fontsource?): the card has to be rebuilt locally'],
       [(fx) => fx.write('src/copy.ts', copyModule({}, 'Other.app')), 'constant DOMAIN_DISPLAY: "Example.app" is now "Other.app"'],
       [(fx) => fx.write('src/method.ts', 'export const BLOCK_CHOICES = { full: [120, 180] };\n'), 'block lengths (BLOCK_CHOICES.full in src/method.ts): [120,150,180] are now [120,180]'],
     ];
@@ -109,13 +112,60 @@ describe('check:og', () => {
     expect(w.out).toContain('copy pick.hero');
     expect(fx.run().status).toBe(0);
   });
-  it('fails a missing record with the fix', () => {
+  it('fails a missing record with the fix, and --write will not create one: the first record needs --init', () => {
     const fx = tree();
     rmSync(join(fx.dir, RECORD));
     const r = fx.run();
     expect(r.status).toBe(1);
     expect(r.out).toContain('scripts/og/og-image.inputs.json is missing, so nothing says what public/og-image.png was built from: rebuild the card');
+    expect(r.out).toContain('--init');
+    const w = fx.run('--write');
+    expect(w.status).toBe(1);
+    expect(w.out).toContain('--write only updates an existing record');
+    expect(w.out).toContain('node scripts/check-og.mjs --init');
     expect(existsSync(join(fx.dir, RECORD))).toBe(false);
+    const i = fx.run('--init');
+    expect(i.status, i.out).toBe(0);
+    expect(fx.run().status).toBe(0);
+    expect(fx.run('--init').out).toContain('already exists; use --write');
+    const h = fx.run('--help');
+    expect(h.out).toContain('--init');
+  });
+  it('fails a copy id or constant that is in the record but no longer an input', () => {
+    for (const [edit, msg] of [
+      [(rec) => { rec.inputs.copy['pick.gone'] = 'An old line.'; }, 'copy pick.gone: "An old line." is in the record but no longer an input'],
+      [(rec) => { rec.inputs.constants.OLD = 'Old'; }, 'constant OLD: "Old" is in the record but no longer an input'],
+    ]) {
+      const fx = tree();
+      const rec = JSON.parse(fx.read(RECORD)); edit(rec);
+      fx.write(RECORD, JSON.stringify(rec, null, 2) + '\n');
+      const r = fx.run();
+      expect(r.status, msg).toBe(1);
+      expect(r.out).toContain(msg);
+    }
+  });
+  it('fails a pick.* or tag.* id that is neither on the card nor in NOT_ON_CARD, naming both fixes', () => {
+    const fx = tree();
+    fx.write('src/copy.ts', copyModule({}).replace('export const COPY = {\n', "export const COPY = {\n  'pick.newHint': { kind: 'own', text: 'A brand new hint.' },\n"));
+    const r = fx.run();
+    expect(r.status).toBe(1);
+    expect(r.out).toContain("'pick.newHint' is a Pick line in src/copy.ts that check:og does not know about: if the card shows it, add it to CARD_COPY in scripts/check-og.mjs (then rebuild the card and run --write); if not, add it to NOT_ON_CARD there with the reason");
+  });
+  it('fails a NOT_ON_CARD id that is gone from src/copy.ts', () => {
+    expect(NOT_ON_CARD.length).toBeGreaterThan(0);
+    const fx = tree();
+    fx.write('src/copy.ts', copyModule({}, 'Example.app', [...CARD_COPY, ...NOT_ON_CARD.slice(1)]));
+    const r = fx.run();
+    expect(r.status).toBe(1);
+    expect(r.out).toContain(`NOT_ON_CARD has '${NOT_ON_CARD[0]}', which is not an id in src/copy.ts: drop it from scripts/check-og.mjs`);
+  });
+  it('says run npm ci when a font file or node_modules is missing, not a stack trace', () => {
+    const fx = tree();
+    rmSync(join(fx.dir, 'node_modules'), { recursive: true });
+    const r = fx.run();
+    expect(r.status).toBe(1);
+    expect(r.out).toContain('node_modules/@fontsource-variable/serif/files/serif.woff2 is missing: run npm ci');
+    expect(r.out).not.toMatch(/at .*\.mjs:\d+:\d+/);
   });
   it('fails a card that imports copy the inputs do not cover, or whose fonts cannot be found', () => {
     const fx = tree();

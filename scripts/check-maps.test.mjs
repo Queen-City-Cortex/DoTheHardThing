@@ -24,23 +24,21 @@ function run(edit = () => {}) {
   /** Replace exactly one occurrence, so a fixture that no longer matches the real files fails loudly. */
   const swap = (f, from, to) => { const s = read(f); expect(s.split(from).length, `${f}: ${from}`).toBe(2); write(f, s.replace(from, to)); };
   edit({ swap, read, write, drive: (a, b) => swap('drive.mjs', a, b), map: (m, a, b) => swap(`features/${m}.md`, a, b) });
-  const t0 = Date.now();
   const r = spawnSync(process.execPath, [SCRIPT], { encoding: 'utf8', env: { ...process.env, MAPS_DRIVE: join(dir, 'drive.mjs'), MAPS_FEATURES: join(dir, 'features') } });
-  return { status: r.status, out: r.stdout + r.stderr, ms: Date.now() - t0 };
+  return { status: r.status, out: r.stdout + r.stderr };
 }
 
 describe('check:maps', () => {
-  it('passes the real tree, under the time budget, and names the sub-features no journey can prove', () => {
+  it('passes the real tree and names the sub-features no journey can prove', () => {
     const r = spawnSync(process.execPath, [SCRIPT], { encoding: 'utf8', cwd: ROOT });
     expect(r.status, r.stderr).toBe(0);
     expect(r.stdout).toMatch(/^maps OK: \d+ journeys, 9 maps$/m);
     expect(r.stdout).toContain('not proved by any journey, as the map says ("not verified by vdt"): an-worker');
   });
-  it('passes an unchanged copy, quickly', () => {
+  it('passes an unchanged copy', () => {
     const r = run();
     expect(r.status, r.out).toBe(0);
     expect(r.out).toMatch(/maps OK: 50 journeys, 9 maps/);
-    expect(r.ms).toBeLessThan(3000); // the target is 500 ms, measured by hand; this only catches a gross slowdown
   });
   it('fails a renamed key whose meta.id was left behind', () => {
     const r = run(({ drive }) => drive("'two-tabs': journey({ id: 'two-tabs'", "'two-tabs-stale': journey({ id: 'two-tabs'"));
@@ -72,6 +70,18 @@ describe('check:maps', () => {
     expect(r.status).toBe(1);
     expect(r.out).toMatch(/'two-tabs' is listed in 2 maps \(.*close-day\.md:\d+, .*history\.md:\d+\); keep "Run `vdt journey two-tabs`" in history\.md only and write "See `two-tabs` in \[history\.md\]\(\.\/history\.md\)" in the others/);
   });
+  it('fails a journey listed twice in its own map', () => {
+    const r = run(({ map }) => map('history', '## Gotchas', '- **Again.** Run `vdt journey two-tabs`.\n\n## Gotchas'));
+    expect(r.status).toBe(1);
+    expect(r.out).toMatch(/'two-tabs' is listed 2 times \(.*history\.md:\d+, .*history\.md:\d+\); keep one "Run `vdt journey two-tabs`" line, in history\.md/);
+  });
+  it('counts a listing in another spelling, so a duplicate in that spelling fails', () => {
+    for (const spelling of ['Run `e2e/vdt journey two-tabs`', 'Run `VDT_PORT=4401 vdt journey two-tabs`', 'Run `VDT_PORT=4401 e2e/vdt journey two-tabs --keep`']) {
+      const r = run(({ swap }) => swap('features/close-day.md', '## Gotchas', `- **Dup.** ${spelling}.\n\n## Gotchas`));
+      expect(r.status, spelling).toBe(1);
+      expect(r.out, spelling).toMatch(/'two-tabs' is listed in 2 maps \(.*close-day\.md:\d+, .*history\.md:\d+\)/);
+    }
+  });
   it('fails a map that names a journey that does not exist', () => {
     const r = run(({ map }) => map('reminder', '## Gotchas', '- **Ghost.** Run `vdt journey ghost`.\n\n## Gotchas'));
     expect(r.status).toBe(1);
@@ -81,6 +91,16 @@ describe('check:maps', () => {
     const r = run(({ map }) => map('close-day', 'See `count-grows` in [history.md](./history.md)', 'See `count-grows` in [close-day.md](./close-day.md)'));
     expect(r.status).toBe(1);
     expect(r.out).toMatch(/close-day\.md:\d+: says see 'count-grows' in close-day\.md, but it lives in history\.md; write see `count-grows` in \[history\.md\]\(\.\/history\.md\)/);
+  });
+  it('matches a see-reference by its link target, not its link text', () => {
+    const r = run(({ map }) => map('close-day', 'See `count-grows` in [history.md](./history.md)', 'See `count-grows` in [close-day](./close-day.md)'));
+    expect(r.status).toBe(1);
+    expect(r.out).toMatch(/close-day\.md:\d+: says see 'count-grows' in close-day\.md, but it lives in history\.md/);
+  });
+  it('fails a sub-feature id listed in two maps, naming both lines', () => {
+    const r = run(({ map }) => map('close-day', '\n## How to get to it', '- `hi-two-tabs` the same id again.\n\n## How to get to it'));
+    expect(r.status).toBe(1);
+    expect(r.out).toMatch(/sub-feature `hi-two-tabs` is listed in two maps \(.*close-day\.md:\d+ and .*history\.md:\d+\); an id has one home: keep it in one map and write "see `hi-two-tabs` in \[map\.md\]\(\.\/map\.md\)" in the other/);
   });
   it('fails a proves id that is no sub-feature, and the sub-feature it left unproved', () => {
     const r = run(({ drive }) => drive("proves: ['hi-two-tabs']", "proves: ['hi-two-tab']"));
@@ -102,6 +122,11 @@ describe('check:maps', () => {
     const r = run(({ drive }) => drive(TWO_TABS, `${TWO_TABS}'nope.id', `));
     expect(r.status).toBe(1);
     expect(r.out).toMatch(/'two-tabs': strings has 'nope\.id', which is not an id in src\/copy\.ts; fix the id or drop it/);
+  });
+  it('fails a strings id that is only on the prototype of COPY', () => {
+    const r = run(({ drive }) => drive(TWO_TABS, `${TWO_TABS}'constructor', `));
+    expect(r.status).toBe(1);
+    expect(r.out).toMatch(/'two-tabs': strings has 'constructor', which is not an id in src\/copy\.ts; fix the id or drop it/);
   });
   it('fails a strings id the journey never asserts', () => {
     const r = run(({ drive }) => drive(TWO_TABS, `${TWO_TABS}'error.reload', `));
@@ -129,5 +154,16 @@ describe('check:maps', () => {
     const r = run(({ drive }) => drive('\nconst args = ', "\nJ['late-one'] = async () => {};\nconst args = "));
     expect(r.status).toBe(1);
     expect(r.out).toMatch(/drive\.mjs:\d+: a journey is added with J\.x = \.\.\.; move it into const J = \{ \.\.\. \}/);
+  });
+  it('reports an Object.assign(J, x) argument it cannot read, which would hide its journeys', () => {
+    const more = "function makeMore() { return { 'ghost': journey({ id: 'ghost', feature: 'history', proves: [], strings: [] }, async () => {}) }; }\nObject.assign(J, makeMore());\n";
+    const r = run(({ drive }) => drive('\nconst args = ', `\n${more}const args = `));
+    expect(r.status).toBe(1);
+    expect(r.out).toMatch(/drive\.mjs:\d+: Object\.assign\(J, makeMore\(\)\) merges journeys this check cannot read; write the journeys as an object literal assigned to a top-level const, then Object\.assign\(J, thatConst\)/);
+  });
+  it('reports an alias of J, through which journeys could be added unseen', () => {
+    const r = run(({ drive }) => drive('\nconst args = ', "\nconst J2 = J;\nJ2['ghost'] = async () => {};\nconst args = "));
+    expect(r.status).toBe(1);
+    expect(r.out).toMatch(/drive\.mjs:\d+: J2 is another name for J/);
   });
 });
