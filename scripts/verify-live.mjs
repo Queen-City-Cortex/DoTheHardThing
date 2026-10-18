@@ -1,6 +1,6 @@
 // verify:live: read-only checks of a deployed site. GET only; it never POSTs to /api/event, so it adds
 // nothing to the anonymous counts. Usage:
-//   SITE=https://dothehardthing.app node scripts/verify-live.mjs [--retries N]   (default SITE is the production URL)
+//   SITE=https://dothehardthing.app node scripts/verify-live.mjs [--retries N] [--www | --require-www]   (default SITE is the production URL)
 // Checks (FAIL exits 1): / is 200 with the root div; when dist/index.html exists, the live page serves the same hashed
 // entry script (so this is the build you just made); GET /api/event is 405 (the Worker answers, not the SPA fallback);
 // /og-image.png is image/png with the same bytes as public/og-image.png; /sw.js is served (and equals dist/sw.js when
@@ -9,6 +9,11 @@
 // public/_headers without a dist, content-type aside, compared per name with whitespace collapsed) need the live site to serve this build: when its entry script equals
 // dist/index.html's, a mismatch is a FAIL; when it does not yet (or there is no dist to compare), they print PENDING,
 // which never fails the run on its own (the entry script check above still does).
+// --www (opt in; CI does not pass it): GET https://www.<SITE host> `/` and `/?x=1` without following redirects and want a
+// 301 to SITE plus the same path and query (docs/www-redirect.md). Only when SITE is the production apex; another SITE
+// skips it with a note. The www origin can be overridden with WWW_SITE (the tests point it at a local server). A www that
+// still serves the app (no redirect rule yet) is PENDING, which never fails the run; --require-www makes it a FAIL. A
+// redirect to the wrong place, or no answer, is a FAIL either way.
 // --retries N: right after a deploy the edge may still serve the old build; retry the failing round N times, 15 s apart.
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
@@ -19,10 +24,13 @@ const SITE = (process.env.SITE ?? SITE_URL).replace(/\/$/, '');
 const ri = process.argv.indexOf('--retries');
 const RETRIES = ri > 0 ? Number(process.argv[ri + 1]) || 0 : 0;
 const WAIT_MS = 15_000;
+const REQUIRE_WWW = process.argv.includes('--require-www');
+const WWW = REQUIRE_WWW || process.argv.includes('--www');
+const APEX = new URL(SITE_URL).host;
 const sha = (buf) => createHash('sha256').update(buf).digest('hex').slice(0, 16);
 
-async function get(path) { // GET only: no method parameter, so no call can POST
-  const res = await fetch(SITE + path, { redirect: 'manual', headers: { 'user-agent': 'verify-live (read-only)', 'cache-control': 'no-cache' } });
+async function get(path, origin = SITE) { // GET only: no method parameter, so no call can POST
+  const res = await fetch(origin + path, { redirect: 'manual', headers: { 'user-agent': 'verify-live (read-only)', 'cache-control': 'no-cache' } });
   return { res, body: Buffer.from(await res.arrayBuffer()) };
 }
 
@@ -88,6 +96,22 @@ async function round() {
     `/ gets the ${wantH.length} headers ${headersFile} gives it (${wantH.map(([n]) => display(n)).join(', ')})`);
   for (const [n, why] of Object.entries(LEFT_OUT)) warns.push(h.has(n) ? `/ has ${n}: ${h.get(n).slice(0, 80)} (not from _headers)` : `/ has no ${n}, left out on purpose: ${why} (docs/architecture.md, Hosting)`);
   for (const n of ['server', 'cf-ray', 'age', 'etag']) if (h.has(n)) warns.push(`/ ${n}: ${h.get(n)}`);
+  if (WWW) {
+    const site = new URL(SITE);
+    const www = process.env.WWW_SITE?.replace(/\/$/, '') ?? (site.host === APEX ? `https://www.${APEX}` : null);
+    if (!www) warns.push(`www check skipped: SITE host ${site.host} is not the production apex ${APEX} (set WWW_SITE to name a www origin)`);
+    else {
+      for (const path of ['/', '/?x=1']) {
+        const want = SITE + path;
+        let r;
+        try { r = (await get(path, www)).res; } catch (e) { fail(`GET ${www}${path} failed (${e.cause?.code ?? e.message}): want 301 to ${want}`); continue; }
+        const loc = r.headers.get('location');
+        if (r.status === 301 && loc === want) ok(`${www}${path} 301 to ${want}`);
+        else if (r.status >= 300 && r.status < 400) fail(`${www}${path} is ${r.status} to ${loc ?? '(no location)'}, want 301 to ${want}: fix the redirect rule (docs/www-redirect.md)`);
+        else (REQUIRE_WWW ? fail : (m) => pendings.push(m))(`www redirect: not created yet (${www}${path} answers ${r.status}, want 301 to ${want}; see docs/www-redirect.md)`);
+      }
+    }
+  }
   return { fails, warns, oks, pendings, liveEntry };
 }
 

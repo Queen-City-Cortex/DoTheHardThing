@@ -53,7 +53,9 @@ async function site(overrides = {}) {
 
 function run(cwd, env, args = []) {
   return new Promise((ok) => {
-    const p = spawn(process.execPath, [SCRIPT, ...args], { cwd, env: { ...process.env, ...env } });
+    const all = { ...process.env, ...env };
+    for (const k of Object.keys(all)) if (all[k] === undefined) delete all[k]; // `WWW_SITE: undefined` unsets it
+    const p = spawn(process.execPath, [SCRIPT, ...args], { cwd, env: all });
     let out = '';
     p.stdout.on('data', (d) => { out += d; });
     p.stderr.on('data', (d) => { out += d; });
@@ -117,5 +119,57 @@ describe('verify:live', () => {
     expect(r.out).toContain('PENDING headers on /: live does not serve this build yet');
     expect(r.out).not.toContain('FAIL  / does not get');
     expect(new Set(s.methods)).toEqual(new Set(['GET']));
+  });
+
+  // www: a second local server stands in for www (WWW_SITE), so the real www host is never asked
+  describe('--www', () => {
+    const redirect = (to) => (path) => ({ status: 301, headers: { location: to + path }, body: '' });
+    async function wwwSite(answer) {
+      const methods = [];
+      const server = createServer((req, res) => { methods.push(req.method); const r = answer(req.url); res.writeHead(r.status, r.headers).end(r.body); });
+      await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
+      cleanup.push(() => new Promise((ok) => server.close(ok)));
+      return { url: `http://127.0.0.1:${server.address().port}`, methods };
+    }
+    it('is not checked without the flag (what CI runs)', async () => {
+      const s = await site();
+      const w = await wwwSite(() => ({ status: 200, headers: {}, body: page('assets/index-THIS.js') }));
+      const r = await run(localDist(), { SITE: s.url, WWW_SITE: w.url });
+      expect(r.out).not.toContain('www');
+      expect(w.methods).toEqual([]);
+    });
+    it('passes when www answers 301 to the bare domain with the same path and query', async () => {
+      const s = await site();
+      const w = await wwwSite((path) => redirect(s.url)(path));
+      const r = await run(localDist(), { SITE: s.url, WWW_SITE: w.url }, ['--require-www']);
+      expect(r.out).toContain(`OK    ${w.url}/ 301 to ${s.url}/`);
+      expect(r.out).toContain(`OK    ${w.url}/?x=1 301 to ${s.url}/?x=1`);
+      expect(r.status).toBe(0);
+      expect(w.methods).toEqual(['GET', 'GET']);
+    });
+    it('reports PENDING, exit 0, while www still serves the app; --require-www makes it a FAIL', async () => {
+      const s = await site();
+      const w = await wwwSite(() => ({ status: 200, headers: {}, body: page('assets/index-THIS.js') }));
+      const r = await run(localDist(), { SITE: s.url, WWW_SITE: w.url }, ['--www']);
+      expect(r.out).toContain(`PENDING www redirect: not created yet (${w.url}/ answers 200, want 301 to ${s.url}/; see docs/www-redirect.md)`);
+      expect(r.status).toBe(0);
+      const req = await run(localDist(), { SITE: s.url, WWW_SITE: w.url }, ['--require-www']);
+      expect(req.out).toContain('FAIL  www redirect: not created yet');
+      expect(req.status).toBe(1);
+    });
+    it('fails on a redirect that drops the query or is not a 301', async () => {
+      const s = await site();
+      const w = await wwwSite((path) => ({ status: path === '/' ? 302 : 301, headers: { location: `${s.url}/` }, body: '' }));
+      const r = await run(localDist(), { SITE: s.url, WWW_SITE: w.url }, ['--www']);
+      expect(r.out).toContain(`FAIL  ${w.url}/ is 302 to ${s.url}/, want 301 to ${s.url}/`);
+      expect(r.out).toContain(`FAIL  ${w.url}/?x=1 is 301 to ${s.url}/, want 301 to ${s.url}/?x=1`);
+      expect(r.status).toBe(1);
+    });
+    it('skips with a note when SITE is not the production apex and no WWW_SITE is set', async () => {
+      const s = await site();
+      const r = await run(localDist(), { SITE: s.url, WWW_SITE: undefined }, ['--www']);
+      expect(r.out).toContain('INFO  www check skipped: SITE host 127.0.0.1:');
+      expect(r.status).toBe(0);
+    });
   });
 });

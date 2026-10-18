@@ -65,6 +65,7 @@ Every push to `master` runs [`.github/workflows/ci.yml`](.github/workflows/ci.ym
 
 - Analytics Engine is enabled on the Cloudflare account (Analytics Engine in the Cloudflare dashboard). The `EVENTS` binding in `wrangler.jsonc` fails with error 10089 otherwise.
 - The two GitHub secrets below exist and the API token has the permissions below.
+- Optional: a Cloudflare redirect rule that sends `www.dothehardthing.app` to the bare domain with a 301. Nothing in the repo or CI creates it; the dashboard steps and the check (`npm run verify:live -- --require-www`) are in [docs/www-redirect.md](docs/www-redirect.md).
 - The GitHub environment `production` needs no setup: GitHub creates it the first time the deploy job runs. Adding a required reviewer to it in the repository settings (Settings > Environments) would make every deploy wait for an approval.
 
 **GitHub secrets** (repository **Settings > Secrets and variables > Actions > Repository secrets > New repository secret**):
