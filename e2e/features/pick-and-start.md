@@ -31,7 +31,7 @@ Preconditions:
 - **Pushed label.** Run `vdt journey pushed-zero-label`. On a first visit, add `Call mom` on step 1 and answer it Yes/Yes. On Pick the button matching `/Call mom/` contains `pushed` and does not contain `0×`.
 - **The talk's words.** Run `vdt journey copy-from-the-talk`. Skip step 1, add `Ask for the raise` as risky, answer No/No: `Nothing got a yes.` with the blockquote; `Look again`, Yes/Yes, Pick shows its hint (and not the risky-step line), run a 2h block: Close has no quote and no `Anything left comes forward tomorrow.`; About quotes Tim Ferriss twice and has no `No streaks`.
 - **Review copy.** Run `vdt journey review-copy`. First visit, one risky item, one 2h block with a 9-minute pause: every line in `ps-block-copy`, the dots as `img` `Step 1 of 3`, no em dash on any screen, and About's lines (see [analytics.md](./analytics.md), `an-privacy-note`; `his eight steps, condensed to three`; `An independent app based on Tim Ferriss's method. Not affiliated with or endorsed by him.`; exactly one link, `Watch his short talk`, and no `original post`).
-- **Start.** Run `vdt journey start-end-block`. After choosing the item and the `2h` radio, `Start the block` shows a timer containing `2:00:00`.
+- **Start.** See `start-end-block` in [block-timer.md](./block-timer.md). After choosing the item and the `2h` radio, `Start the block` shows a timer containing `2:00:00`.
 - **Proof.** `03-pushed.*`, `06-ask.*` and `07-pick.*`, plus `pick-list.*`, `pick-order.*` and `pick-pushed-label.*`.
 
 ## Gotchas

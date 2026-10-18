@@ -8,7 +8,7 @@ Run this before you call any change done. It stops at the first failure and prin
 
 | Command | What it runs | When |
 | --- | --- | --- |
-| `npm run check:fast` | public hygiene, text check, AGENTS.md check, typecheck, lint, unit tests | while iterating |
+| `npm run check:fast` | public hygiene, text check, maps check, social card check, AGENTS.md check, typecheck, lint, unit tests | while iterating |
 | `npm run check` | check:fast, then `vite build` and the dist check | before every commit |
 | `npm run check:full` | check, then every journey against the fresh build | before a change to what a person sees or does is called done |
 | `npm run journeys:fast` | the 8 per-PR journeys (`FAST` in `e2e/run.mjs`) on the current `dist/` | after `npm run build` |
@@ -27,6 +27,8 @@ The journey commands serve `dist/` on `VDT_PORT` (default 4317). Other agents sh
 | `/`, `/index.html` and `/sw.js` get no-cache; the service worker precache covers every file the page loads; manifest icons exist | `scripts/check-dist.mjs` | `npm run check:dist` |
 | Journeys drive `dist/`, not `src/`: rebuild before running them | `e2e/run.mjs --serve` refuses a `dist/` older than `src/`, `public/`, `index.html` or `vite.config.ts` | `npm run journeys` |
 | Each journey runs isolated (own browser, fresh context, own fake clock, own evidence dir) and fails after `VDT_JOURNEY_TIMEOUT_MS` (default 120000) | `e2e/run.mjs` (one `e2e/drive.mjs` child per journey) | `npm run journeys` |
+| Every journey has meta and is listed in exactly one feature map; maps name only real journeys and every sub-feature is proved. Each journey in `e2e/drive.mjs` is `'name': journey({ id, feature, proves, strings }, fn)` with a plain-literal meta; it has one "Run `vdt journey <name>`" line, in its `feature` map, and other maps write "see `<name>` in [map.md](./map.md)"; every backticked kebab-case name in a map is a journey, a sub-feature id or on `PROSE_ALLOW`; each `strings` id is in `src/copy.ts` and asserted; a sub-feature no journey can prove says "not verified by vdt" and is printed on every run | `scripts/check-maps.mjs`, `scripts/check-maps.test.mjs` | `npm run check:maps` |
+| The committed social card was built from the current card template, fonts and Pick copy: `scripts/og/og-image.inputs.json` records those inputs (with the block lengths and the copy constants the card shows) and the hash of `public/og-image.png`. Rebuild: `npm run build`, `npx vite preview --port 4173`, `node scripts/og/card.mjs`, look at the card, then `node scripts/check-og.mjs --write` (it refuses while the inputs changed and the png did not). `--pixels` re-renders and compares locally only, never in CI: another Chromium build differs by itself | `scripts/check-og.mjs`, `scripts/check-og.test.mjs` | `npm run check:og` |
 | `vdt launch` and `vdt cleanup` refuse to run without `VDT_PORT`; pick a port of your own so you never stop another agent's server | `e2e/vdt` | `e2e/vdt launch` with your `VDT_PORT` set |
 | A live journey run never adds to the real counts (`/api/event` answered locally off `http://127.*`) | `session()` in `e2e/drive.mjs` | `VDT_URL=https://dothehardthing.app node e2e/drive.mjs <name>` |
 | Live verification is read-only: GET only, never POST `/api/event` | `scripts/verify-live.mjs` | `npm run verify:live` |

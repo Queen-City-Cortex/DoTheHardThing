@@ -1,0 +1,182 @@
+// check:maps: the feature maps in e2e/features and the journeys in e2e/drive.mjs must agree. drive.mjs is parsed, never
+// run, so this needs no browser and does not load Playwright. Every problem prints file:line and the fix.
+//   - every journey in J (and in objects merged with Object.assign(J, x)) is 'name': journey({ id, feature, proves, strings }, fn)
+//     with a plain-literal meta (`note` is an allowed optional key); meta.id is its name; `feature` names a map; every `proves`
+//     id is a Sub-features id of some map; every `strings` id is in src/copy.ts and the journey really asserts it: its code,
+//     or a top-level helper or journey it uses, has t('id'), the bare id, or a literal equal to the id's text;
+//   - every journey is listed in exactly one map, its `feature` map, as "Run `vdt journey <name>`"; other maps write
+//     "see `<name>` in [map.md](./map.md)". Every name after `vdt journey`, and every "see `x` in [map.md]", is a real
+//     journey (or sub-feature) whose home is that map;
+//   - every sub-feature of every map is proved by some journey's meta.proves, or its line says "not verified by vdt"
+//     (those are printed on success, so they stay visible);
+//   - every backticked kebab-case token in a map (`like-this`) is a journey, a sub-feature id, or in PROSE_ALLOW below, so a
+//     rename cannot leave the old name behind in a Proof or prose line.
+// Not caught: a journey added outside J (other than `J.x = ...`, which is reported), prose that describes a journey without
+// naming it, and a helper that asserts a string on one branch only (the reach check follows every helper a journey calls).
+// Usage: node scripts/check-maps.mjs   (npm run check:maps). MAPS_DRIVE and MAPS_FEATURES (relative to the repo root, or
+// absolute) point it at other files, for the tests.
+import fs from 'node:fs';
+import path from 'node:path';
+import { COPY } from '../src/copy.ts';
+
+let acorn;
+try { acorn = await import('acorn'); } catch {
+  console.error('check:maps: cannot import acorn. acorn comes with eslint; if it is gone, add acorn as a devDependency');
+  process.exit(1);
+}
+
+const ROOT = path.resolve(import.meta.dirname, '..');
+const DRIVE = path.resolve(ROOT, process.env.MAPS_DRIVE ?? 'e2e/drive.mjs');
+const FEATURES = path.resolve(ROOT, process.env.MAPS_FEATURES ?? 'e2e/features');
+const NOT_MAPS = ['README.md', 'copy.md'];
+const META_KEYS = ['id', 'feature', 'proves', 'strings', 'note'];
+const NOT_VERIFIED = 'not verified by vdt';
+// backticked kebab-case words in the maps that are neither a journey nor a sub-feature id
+const PROSE_ALLOW = new Set([
+  'aria-pressed', // the ARIA attribute of the toggle rows (first-visit.md, returning-user.md)
+  'color-contrast', // an axe-core rule id (resilience.md)
+  'aria-prohibited-attr', // an axe-core rule id (resilience.md)
+  'answer-yes', // a step label, the evidence file name of history-from-close-and-about's Yes step (close-day.md)
+  'close-first-yes', // a deleted journey, named on purpose: close-day.md says history-from-close-and-about replaced it
+]);
+const rel = (f) => (f.startsWith(ROOT + path.sep) ? path.relative(ROOT, f) : f);
+const D = rel(DRIVE);
+const problems = [];
+
+// ---- read drive.mjs ----
+const src = fs.readFileSync(DRIVE, 'utf8');
+const ast = acorn.parse(src, { ecmaVersion: 'latest', sourceType: 'module', locations: true });
+const walk = (n, f) => {
+  if (!n || typeof n.type !== 'string') return;
+  f(n);
+  for (const k in n) { const v = n[k]; if (Array.isArray(v)) v.forEach((c) => walk(c, f)); else if (v && typeof v.type === 'string') walk(v, f); }
+};
+const key = (p) => p.key.value ?? p.key.name;
+function literal(n) {
+  if (n.type === 'Literal') return n.value;
+  if (n.type === 'TemplateLiteral' && !n.expressions.length) return n.quasis[0].value.cooked;
+  if (n.type === 'ArrayExpression') return n.elements.map(literal);
+  if (n.type === 'ObjectExpression' && n.properties.every((p) => p.type === 'Property' && !p.computed)) return Object.fromEntries(n.properties.map((p) => [key(p), literal(p.value)]));
+  throw new Error(`${D}:${n.loc.start.line}`);
+}
+const tops = {}; const objects = {};
+for (const st of ast.body) {
+  const decls = st.type === 'FunctionDeclaration' ? [[st.id.name, st]] : st.type === 'VariableDeclaration' ? st.declarations.map((d) => [d.id.name, d.init]) : [];
+  for (const [name, init] of decls) { tops[name] = init; if (init?.type === 'ObjectExpression') objects[name] = init; }
+}
+// J plus every object merged into it with Object.assign(J, x); `J.x = ...` is reported, since the meta would be invisible here
+const merged = [{ name: 'J', node: objects.J }];
+walk(ast, (n) => {
+  if (n.type === 'CallExpression' && n.callee.type === 'MemberExpression' && n.callee.object.name === 'Object' && n.callee.property.name === 'assign' && n.arguments[0]?.name === 'J')
+    for (const a of n.arguments.slice(1)) merged.push({ name: a.name, node: a.type === 'ObjectExpression' ? a : objects[a.name] });
+  if (n.type === 'AssignmentExpression' && n.left.type === 'MemberExpression' && n.left.object.name === 'J')
+    problems.push(`${D}:${n.loc.start.line}: a journey is added with J.x = ...; move it into const J = { ... } (or an object merged with Object.assign(J, x)) as 'name': journey({ ... }, fn), so its meta is checked`);
+});
+if (!objects.J) problems.push(`${D}: no const J = { ... }; the journeys must be the properties of J`);
+const journeys = new Map();
+for (const { name: obj, node } of merged) for (const p of node?.properties ?? []) {
+  if (p.type !== 'Property') { problems.push(`${D}:${p.loc.start.line}: a spread in ${obj} hides its journeys from this check; write each journey as 'name': journey({ ... }, fn)`); continue; }
+  const name = key(p); const v = p.value; const line = p.loc.start.line;
+  if (v.type !== 'CallExpression' || v.callee.name !== 'journey' || v.arguments.length !== 2) {
+    problems.push(`${D}:${line}: journey '${name}' has no meta: write '${name}': journey({ id: '${name}', feature: '<map>', proves: [], strings: [] }, async (s) => { ... })`);
+    journeys.set(name, { name, line, fn: v, meta: null }); continue;
+  }
+  let meta = null;
+  try { meta = literal(v.arguments[0]); } catch (e) { problems.push(`${e.message}: the meta of '${name}' is not a plain literal; write it with strings, arrays and objects only (no variables, calls or templates with values)`); }
+  journeys.set(name, { name, line, fn: v.arguments[1], meta });
+}
+
+// copy ids a journey reaches: t('id'), the bare id or the exact text as a literal, in its own code and in every top-level helper or journey it uses
+const TEXT = new Map(Object.entries(COPY).map(([id, e]) => [e.text, id]));
+const isJ = new Set(merged.map((m) => m.name));
+const reachCache = new Map();
+function reach(node, seen = new Set()) {
+  const ids = new Set();
+  walk(node, (x) => {
+    if (x.type === 'Literal' && typeof x.value === 'string') { if (COPY[x.value]) ids.add(x.value); if (TEXT.has(x.value)) ids.add(TEXT.get(x.value)); }
+    if (x.type === 'TemplateLiteral') for (const q of x.quasis) if (TEXT.has(q.value.cooked)) ids.add(TEXT.get(q.value.cooked));
+    let next = null;
+    if (x.type === 'Identifier' && tops[x.name] && !isJ.has(x.name)) next = x.name;
+    if (x.type === 'MemberExpression' && x.object.name === 'J' && x.property.type === 'Literal') next = 'J:' + x.property.value;
+    if (next && !seen.has(next)) {
+      seen.add(next);
+      const target = next.startsWith('J:') ? journeys.get(next.slice(2))?.fn : tops[next];
+      if (target) for (const i of reach(target, seen)) ids.add(i);
+    }
+  });
+  return ids;
+}
+const reached = (j) => { if (!reachCache.has(j.name)) reachCache.set(j.name, reach(j.fn)); return reachCache.get(j.name); };
+
+// ---- read the maps ----
+const maps = new Map(); // name -> { file, lines, subs: Map(id -> { line, unverified }) }
+for (const f of fs.readdirSync(FEATURES).filter((f) => f.endsWith('.md') && !NOT_MAPS.includes(f)).sort()) {
+  const file = path.join(FEATURES, f); const lines = fs.readFileSync(file, 'utf8').split('\n');
+  const subs = new Map(); let inSubs = false;
+  lines.forEach((l, i) => {
+    if (/^## /.test(l)) inSubs = /^## Sub-features\s*$/.test(l);
+    const m = inSubs && l.match(/^- `([a-z0-9-]+)`/);
+    if (m) subs.set(m[1], { line: i + 1, unverified: l.includes(NOT_VERIFIED) });
+  });
+  maps.set(f.replace(/\.md$/, ''), { file, lines, subs });
+}
+const subOwner = new Map();
+for (const [m, { subs }] of maps) for (const s of subs.keys()) subOwner.set(s, m);
+const mapList = [...maps.keys()].join(', ');
+
+// ---- meta ----
+for (const j of journeys.values()) {
+  const at = `${D}:${j.line}: '${j.name}'`; const m = j.meta;
+  if (!m) continue;
+  for (const k of Object.keys(m)) if (!META_KEYS.includes(k)) problems.push(`${at}: unknown meta key '${k}'; the keys are ${META_KEYS.join(', ')}`);
+  for (const k of META_KEYS.slice(0, 4)) if (!(k in m)) problems.push(`${at}: meta has no '${k}'; write ${k}: ${k === 'id' ? `'${j.name}'` : k === 'feature' ? "'<map>'" : '[]'}`);
+  for (const k of ['proves', 'strings']) if (k in m && !(Array.isArray(m[k]) && m[k].every((x) => typeof x === 'string'))) { problems.push(`${at}: meta.${k} must be an array of id strings`); m[k] = []; }
+  if ('id' in m && m.id !== j.name) problems.push(`${at}: meta.id is '${m.id}'; it must equal the journey name: write id: '${j.name}'`);
+  if ('feature' in m && !maps.has(m.feature)) problems.push(`${at}: meta.feature '${m.feature}' is not a map in ${rel(FEATURES)}; use one of ${mapList}`);
+  for (const id of m.proves ?? []) if (!subOwner.has(id)) problems.push(`${at}: proves '${id}', which no map lists under Sub-features; fix the id or add the sub-feature to its map`);
+  for (const id of m.strings ?? []) {
+    if (!COPY[id]) problems.push(`${at}: strings has '${id}', which is not an id in src/copy.ts; fix the id or drop it`);
+    else if (!reached(j).has(id)) problems.push(`${at}: strings has '${id}' but the journey never asserts it (no t('${id}') and no literal ${JSON.stringify(COPY[id].text)} in it or its helpers); assert it or drop it`);
+  }
+}
+
+// ---- the maps: listings, cross-references, prose tokens ----
+const listedIn = new Map();
+for (const [name, m] of maps) m.lines.forEach((line, i) => {
+  const at = `${rel(m.file)}:${i + 1}`;
+  for (const hit of line.matchAll(/`vdt journey ([a-z0-9 -]+)`/g)) for (const j of hit[1].trim().split(/\s+/)) {
+    if (!journeys.has(j)) problems.push(`${at}: names journey '${j}', which is not in J in ${D} (renamed or deleted?); write its current name or drop the line`);
+    else (listedIn.get(j) ?? listedIn.set(j, []).get(j)).push({ map: name, at });
+  }
+  for (const hit of line.matchAll(/see `([a-z0-9-]+)` in \[([a-z0-9-]+)\.md\]/gi)) {
+    const [, x, target] = hit;
+    const home = journeys.get(x)?.meta?.feature ?? subOwner.get(x);
+    if (!journeys.has(x) && !subOwner.has(x)) problems.push(`${at}: refers to '${x}', which is neither a journey in ${D} nor a sub-feature id; write its current name`);
+    else if (home && home !== target) problems.push(`${at}: says see '${x}' in ${target}.md, but it lives in ${home}.md; write see \`${x}\` in [${home}.md](./${home}.md)`);
+  }
+  for (const hit of line.matchAll(/`([a-z][a-z0-9]*(?:-[a-z0-9]+)+)`/g)) {
+    const x = hit[1];
+    if (!journeys.has(x) && !subOwner.has(x) && !PROSE_ALLOW.has(x)) problems.push(`${at}: \`${x}\` looks like a journey name but is neither a journey in ${D} nor a sub-feature id (renamed?); write the current name, or add it to PROSE_ALLOW in scripts/check-maps.mjs with a comment saying what it is`);
+  }
+});
+for (const j of journeys.values()) {
+  const at = [...new Map((listedIn.get(j.name) ?? []).map((l) => [l.map, l])).values()]; // one entry per map
+  const home = j.meta?.feature;
+  if (!at.length) problems.push(`${D}:${j.line}: '${j.name}' is in no map: add a "- **<What it shows>.** Run \`vdt journey ${j.name}\`. ..." line to the Driving section of ${rel(path.join(FEATURES, (home ?? '<feature>') + '.md'))}`);
+  else if (at.length > 1) problems.push(`'${j.name}' is listed in ${at.length} maps (${at.map((l) => l.at).join(', ')}); keep "Run \`vdt journey ${j.name}\`" in ${home}.md only and write "See \`${j.name}\` in [${home}.md](./${home}.md)" in the others`);
+  else if (home && at[0].map !== home) problems.push(`${at[0].at}: lists '${j.name}', but its meta.feature (${D}:${j.line}) is '${home}'; move the line to ${home}.md or change the meta`);
+}
+
+// ---- every sub-feature is proved ----
+const proved = new Set([...journeys.values()].flatMap((j) => j.meta?.proves ?? []));
+const unverified = [];
+for (const m of maps.values()) for (const [id, s] of m.subs) {
+  const at = `${rel(m.file)}:${s.line}`;
+  if (s.unverified && proved.has(id)) problems.push(`${at}: \`${id}\` says "${NOT_VERIFIED}", but ${[...journeys.values()].filter((j) => j.meta?.proves?.includes(id)).map((j) => j.name).join(', ')} proves it; drop the note`);
+  else if (s.unverified) unverified.push(`${id} (${at})`);
+  else if (!proved.has(id)) problems.push(`${at}: no journey proves \`${id}\`; add it to the meta.proves of the journey that shows it, or, if no journey can, say "${NOT_VERIFIED}" in its line and why in Gotchas`);
+}
+
+if (problems.length) { console.error(`check:maps FAIL: ${problems.length} problem(s)\n` + problems.map((p) => '  ' + p).join('\n')); process.exit(1); }
+console.log(`maps OK: ${journeys.size} journeys, ${maps.size} maps`);
+if (unverified.length) console.log(`  not proved by any journey, as the map says ("${NOT_VERIFIED}"): ${unverified.join(', ')}`);

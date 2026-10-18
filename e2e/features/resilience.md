@@ -31,6 +31,7 @@ Preconditions:
 - **Storage blocked.** Run `vdt journey storage-blocked` (an init script makes `Storage.prototype.setItem` throw). The note shows; the ritual through `Start the block` works; no page error.
 - **No Notification API.** Run `vdt journey no-notification-api` (an init script deletes `window.Notification`). About shows the unavailable line and no time input.
 - **Long text.** Run `vdt journey long-url-widths`; a FAIL names the screen, width and element. **Contrast.** Run `vdt journey contrast-aa`; a FAIL names the screen, scheme, element and ratio.
+- **Focus after navigation.** Run `vdt journey focus-after-nav`. Keyboard only through a whole day: after each screen change focus is on the item input (the Name steps) or on the new heading (Ask, Pick, Block, Close, Closed, Your days, About), so typing and Enter work at once; the progress dots are an `img` named `Step 1 of 3`; a plain reload leaves focus on the page body.
 - **Hostile text.** Run `vdt journey hostile-text`. The markup item is listed literally, `Add` is disabled for blanks, no dialog opens, no `<img>` in `main`, the stored text equals what was typed.
 - **Proof.** `offline-reload.*`, `block-survives-offline-reload.*`, `closed-survives-offline-reload.*`; `close.*` and `closed-days-about.*` in small-phone-layout; `ready-again.*`; `note.*`; `about.*`; `blank.*`.
 
