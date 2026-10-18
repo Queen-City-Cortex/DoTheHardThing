@@ -1,7 +1,8 @@
 // check:dist: run after `npm run build`. Fails when the built PWA and hosting config disagree with each other:
 // a file the page needs is missing from the service worker precache (so it fails offline), the manifest theme_color or
 // background_color, or the built CSS's light --paper, differs from the page's light theme-color (index.html owns it),
-// public/_headers does not give `/`, `/index.html` and `/sw.js` a no-cache Cache-Control, a path class the app serves
+// the manifest locks the installed app's orientation, public/_headers does not give `/`, `/index.html` and `/sw.js` a
+// no-cache Cache-Control, a path class the app serves
 // lacks a security header of POLICY (scripts/headers-policy.mjs) or has another value, or a manifest icon is missing
 // from dist. Every failure names the file and the fix.
 // Assumes the site is served from the root (vite `base: '/'`): references are matched as /path.
@@ -58,6 +59,11 @@ else {
   const paper = assets.filter((f) => f.endsWith('.css')).map((f) => read(`assets/${f}`).match(/--paper:\s*(#[0-9a-fA-F]{3,8})/)?.[1]).find(Boolean)?.toLowerCase();
   if (paper !== pageColor) problems.push(`the built CSS's light --paper is ${paper ?? '(not found)'}, but index.html <meta name="theme-color"> is ${pageColor}: keep --paper in src/index.css and the light theme-color the same color`);
 }
+// the installed app follows the device's rotation: an orientation lock (portrait or landscape, any variant) was dropped on
+// purpose after a landscape layout probe; `any` and `natural` are no lock
+if (manifest.orientation !== undefined && !['any', 'natural'].includes(manifest.orientation)) {
+  problems.push(`manifest orientation ${JSON.stringify(manifest.orientation)} locks the installed app's rotation: remove orientation from the manifest in vite.config.ts (the platform default applies), or, if the lock is a decision, write it down in docs/architecture.md (Hosting) and change this check`);
+}
 for (const icon of manifest.icons ?? []) {
   if (typeof icon.src !== 'string') { problems.push(`a manifest icon has no src: fix manifest.icons in vite.config.ts`); continue; }
   const f = strip(icon.src.startsWith('/') ? icon.src : `/${icon.src}`);
@@ -95,4 +101,4 @@ if (problems.length) {
   console.error(`check:dist: ${problems.length} problem(s) in ${dist}`);
   process.exit(1);
 }
-console.log(`check:dist OK: ${precache.size} precache entries cover ${needed.size} needed files; manifest colors match the page; manifest icons present; the app shell is served with no-cache; ${paths.length} path classes get the ${Object.keys(POLICY).length} security headers`);
+console.log(`check:dist OK: ${precache.size} precache entries cover ${needed.size} needed files; manifest colors match the page; no orientation lock; manifest icons present; the app shell is served with no-cache; ${paths.length} path classes get the ${Object.keys(POLICY).length} security headers`);

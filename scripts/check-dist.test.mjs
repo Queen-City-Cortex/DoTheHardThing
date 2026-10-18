@@ -11,7 +11,7 @@ const SECURITY = '  X-Content-Type-Options: nosniff\n  Referrer-Policy: strict-o
 const HEADERS = '/*\n' + SECURITY + '/\n  Cache-Control: no-cache\n/sw.js\n  Cache-Control: no-cache\n/index.html\n  Cache-Control: no-cache\n/assets/*\n  Cache-Control: public, max-age=31536000, immutable\n';
 const dirs = [];
 
-function build({ precache = ['assets/app.js', 'assets/app.css', 'assets/font.woff2', 'index.html'], headers = HEADERS, themeColor = '#f4f3ef', backgroundColor = '#f4f3ef', css = '@font-face{src:url(/assets/font.woff2)}:root{--paper:#f4f3ef}@media (prefers-color-scheme:dark){:root{--paper:#15181d}}', icon = true, meta = '<meta name="theme-color" content="#f4f3ef">', extraLink = '' } = {}) {
+function build({ precache = ['assets/app.js', 'assets/app.css', 'assets/font.woff2', 'index.html'], headers = HEADERS, themeColor = '#f4f3ef', backgroundColor = '#f4f3ef', css = '@font-face{src:url(/assets/font.woff2)}:root{--paper:#f4f3ef}@media (prefers-color-scheme:dark){:root{--paper:#15181d}}', icon = true, meta = '<meta name="theme-color" content="#f4f3ef">', extraLink = '', manifestExtra = {} } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'check-dist-'));
   dirs.push(dir);
   mkdirSync(join(dir, 'assets'));
@@ -20,7 +20,7 @@ function build({ precache = ['assets/app.js', 'assets/app.css', 'assets/font.wof
   writeFileSync(join(dir, 'assets/app.css'), css);
   writeFileSync(join(dir, 'assets/font.woff2'), '');
   if (icon) writeFileSync(join(dir, 'pwa-192.png'), '');
-  writeFileSync(join(dir, 'manifest.webmanifest'), JSON.stringify({ theme_color: themeColor, background_color: backgroundColor, icons: [{ src: 'pwa-192.png', sizes: '192x192' }] }));
+  writeFileSync(join(dir, 'manifest.webmanifest'), JSON.stringify({ theme_color: themeColor, background_color: backgroundColor, icons: [{ src: 'pwa-192.png', sizes: '192x192' }], ...manifestExtra }));
   writeFileSync(join(dir, 'sw.js'), `precacheAndRoute([${precache.map((u) => `{url:"${u}",revision:null}`).join(',')}])`);
   writeFileSync(join(dir, '_headers'), headers);
   return spawnSync(process.execPath, [SCRIPT, dir], { encoding: 'utf8' });
@@ -131,5 +131,24 @@ describe('check:dist, security headers', () => {
     const r = build({ headers: HEADERS + 'https://example.com/*\n  X-Frame-Options: DENY\n' });
     expect(r.status).toBe(1);
     expect(r.stderr).toContain('is not a path rule');
+  });
+});
+
+describe('check:dist, orientation', () => {
+  it('fails on the old portrait lock, naming the fix', () => {
+    const r = build({ manifestExtra: { orientation: 'portrait' } });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('manifest orientation "portrait" locks the installed app\'s rotation: remove orientation from the manifest in vite.config.ts (the platform default applies), or, if the lock is a decision, write it down in docs/architecture.md (Hosting)');
+  });
+  it('fails on every lock value', () => {
+    for (const o of ['portrait-primary', 'portrait-secondary', 'landscape', 'landscape-primary', 'landscape-secondary']) {
+      const r = build({ manifestExtra: { orientation: o } });
+      expect(r.status, o).toBe(1);
+      expect(r.stderr).toContain(`manifest orientation "${o}" locks`);
+    }
+  });
+  it('passes with any, natural, or no orientation', () => {
+    for (const o of ['any', 'natural']) expect(build({ manifestExtra: { orientation: o } }).status, o).toBe(0);
+    expect(build().stdout).toContain('no orientation lock');
   });
 });
