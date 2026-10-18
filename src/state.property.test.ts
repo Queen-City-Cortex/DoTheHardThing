@@ -1,18 +1,27 @@
 // Seeded random action sequences over the screen state (BG-1). No new dependency: a small PRNG (mulberry32).
 // Three parts:
-//  (a) master's App.tsx (8f5dbaa) written out as a model over logic.ts (`legacyStep`): its handlers, then its effects in
-//      their order, each effect running when its dependencies changed, as React runs them. Switches leave out each repair
-//      (validChoice on item edits and on Start, screenForBlock, clearing the overlay stack, settling in an effect);
+//  (a) the App.tsx before this reducer (8f5dbaa, "the old App.tsx" below) written out as a model over logic.ts
+//      (`legacyStep`): its handlers, then its effects in their order, each effect running when its dependencies changed,
+//      as React runs them. Switches leave out each repair (validChoice on item edits and on Start, screenForBlock,
+//      clearing the overlay stack, settling in an effect);
 //  (b) the reducer in state.ts against the same invariants, with any action at any time (no UI gating) and UI-gated;
-//  (c) the reducer inside a model of the new App.tsx (`appStep`: the rollover check that saves the day being left, the
-//      first tick, the notification) and the model of master fed the same UI-gated sequences, compared after every action
-//      and again after every interval check: same screen, same way back from the overlays, same Day JSON, same stored days,
-//      same number of "block done" notifications, and the same toggle while planning.
-// The comparison proves the reducer equals the MODEL of master, not master itself: a mistake in the model would hide a change.
-// `small` is compared only on the planning screens: the reducer drops the toggle once a block starts, master keeps it
-// through the block, Close and Closed, but every way back to planning (a new day, Start today over, a reload) resets it.
-// REPLAY=1 also runs the invariants as a must-pass check on the model without its repairs: it fails, on the
-// 6ef125f state "End block leaves the user on the timer" (seed 82, step 21). SEEDS=100000 widens the per-repair search.
+//  (c) the reducer inside a model of the new App.tsx (`app`: the rollover check that saves the day being left, the first
+//      tick, the notification) and the model of the old App.tsx fed the same UI-gated sequences, compared after every
+//      action and again after every interval check: same screen, same way back from the overlays, same Day JSON, same
+//      stored days, same number of "block done" notifications, and the same toggle while planning.
+// The UI-gated sequences come in two mixes (see Mix): UNIFORM, the first one, which the pinned seeds depend on, and
+// WEIGHTED, which reaches the block, Close and midnight often enough that the weighted comparison asserts how often each
+// action changed the state and each screen was on show. In (b) and (c) another tab sometimes saved a record for the new
+// date before the check after midnight (aheadOf), so the rollover has to open it.
+// The comparison proves the reducer equals the MODEL of the old App.tsx, not the old App.tsx itself: a mistake in the
+// model would hide a change.
+// `small` is compared only on the planning screens: the reducer drops the toggle once a block starts, the old App.tsx
+// kept it through the block, Close and Closed, but every way back to planning (a new day, Start today over, a reload)
+// resets it.
+// Without its repairs the model reaches the 6ef125f state "End block leaves the user on the timer" first at seed 82,
+// step 21, and without validChoice alone a stale choice at seed 38359, step 31; both are asserted. REPLAY=1 also runs the
+// invariants as a must-pass check on the model without its repairs, which fails on seed 82, step 21. SEEDS=100000 widens
+// the searches (the coverage floors then do not apply).
 import { describe, expect, it } from 'vitest';
 import * as L from './logic';
 import * as S from './state';
@@ -54,14 +63,18 @@ const TEXTS = ['Taxes', 'Ask for the raise', 'Call mom', 'taxes ', 'Write the es
 const TAGS: L.Tag[] = ['pushed', 'risky', 'anxious'];
 const LENGTHS = { any: [60, 90, 120, 150, 180, 7], small: [60, 90, 120], full: [120, 150, 180] };
 
-/** An item edit as the Name screen makes one: add or tag, untag, remove. Half the removals and untags hit the chosen item. */
-function editItems(r: Rnd, items: L.Item[], n: number, chosenId: string | null = null): L.Item[] {
+/** An item edit as the Name screen makes one: add or tag (`add` of the time), untag, remove. Half the removals and untags
+ *  hit the chosen item. */
+function editItems(r: Rnd, items: L.Item[], n: number, chosenId: string | null = null, add = 0.6): L.Item[] {
   const k = r();
-  if (k < 0.6 || !items.length) return L.addOrTag(items, pickOf(r, TEXTS), pickOf(r, TAGS), `i${n}`).items;
+  if (k < add || !items.length) return L.addOrTag(items, pickOf(r, TEXTS), pickOf(r, TAGS), `i${n}`).items;
   const it = (r() < 0.5 && items.find((i) => i.id === chosenId)) || pickOf(r, items);
   if (k < 0.8) return items.filter((i) => L.norm(i.text) !== L.norm(it.text));
   return L.removeTag(items, it.id, pickOf(r, TAGS));
 }
+
+/** A generator of the next action. */
+type Gen = (r: Rnd, v: View, n: number) => S.Action;
 
 /** Any action at all, ids included that are on no list: the reducer has to hold on its own. */
 function anyAction(r: Rnd, v: View, n: number): S.Action {
@@ -91,44 +104,67 @@ function anyAction(r: Rnd, v: View, n: number): S.Action {
   }
 }
 
-/** Only what the screen on show offers, and only when its button is enabled (master's App relies on this). */
-function uiAction(r: Rnd, v: View, n: number): S.Action {
-  const opts: (() => S.Action | null)[] = [];
+/** How the UI-gated generator weighs what a screen offers. UNIFORM is the first distribution and stays as it is: the
+ *  invariants runs, the pinned per-repair seeds (seed 82, seed 38359) and the first comparison use it, and changing it
+ *  moves those seeds. It spends most steps on Welcome, Name and the overlays (another tab closes the day 5% of the time,
+ *  `open` weighs as much as a screen's own buttons, and Name offers two item edits), so it rarely reaches a block.
+ *  WEIGHTED gets sequences through Pick, the block, Close, Closed and midnight: another tab closes the day 0.5% of the
+ *  time, a screen's own buttons weigh 3 against 1 for opening an overlay and 1 for Back on Name and Ask, Name offers one
+ *  item edit, and an edit adds an item 80% of the time. */
+type Mix = { otherTab: number; own: number; open: number; stepBack: number; edits: number; add: number };
+const UNIFORM: Mix = { otherTab: 0.05, own: 1, open: 1, stepBack: 1, edits: 2, add: 0.6 };
+const WEIGHTED: Mix = { otherTab: 0.005, own: 3, open: 1, stepBack: 1, edits: 1, add: 0.8 };
+
+/** Only what the screen on show offers, and only when its button is enabled (the App.tsx before this reducer relies on this). */
+const gated = (mix: Mix): Gen => (r, v, n) => {
+  const opts: { f: () => S.Action | null; w: number }[] = [];
   const d = v.day;
   const b = d.block;
-  const add = (...fs: (() => S.Action | null)[]) => opts.push(...fs);
+  const add = (...fs: (() => S.Action | null)[]) => opts.push(...fs.map((f) => ({ f, w: mix.own })));
+  const back = () => opts.push({ f: () => ({ type: 'stepBack' }), w: mix.stepBack });
+  const open = (to: S.OverlayName) => opts.push({ f: () => ({ type: 'open', to }), w: mix.open });
+  const edit = () => ({ type: 'editItems' as const, items: editItems(r, d.items, n, d.chosenId, mix.add) });
   // focus or visibility: another tab may have closed this day (or saved nothing for it). A tab closes a day only from
   // Close, so its copy never has a running block (that exists only in a hand-edited store: see the example test below)
-  if (r() < 0.05) return { type: 'otherTabClosed', theirs: r() < 0.5 ? { ...d, block: b && b.endedAt == null ? L.stop(b, b.startedAt) : b, closed: true } : undefined };
+  if (r() < mix.otherTab) return { type: 'otherTabClosed', theirs: r() < 0.5 ? { ...d, block: b && b.endedAt == null ? L.stop(b, b.startedAt) : b, closed: true } : undefined };
   switch (v.screen) {
-    case 'welcome': add(() => ({ type: 'start' }), () => ({ type: 'setSmall', small: r() < 0.5 }), () => ({ type: 'open', to: 'about' })); break;
-    case 'name': add(() => ({ type: 'editItems', items: editItems(r, d.items, n, d.chosenId) }), () => ({ type: 'editItems', items: editItems(r, d.items, n, d.chosenId) }),
-      () => (L.filled(d.items).length ? { type: 'namingDone' } : null), () => ({ type: 'stepBack' }), () => ({ type: 'open', to: 'about' })); break;
+    case 'welcome': add(() => ({ type: 'start' }), () => ({ type: 'setSmall', small: r() < 0.5 })); open('about'); break;
+    case 'name': add(...Array.from({ length: mix.edits }, () => edit), () => (L.filled(d.items).length ? { type: 'namingDone' } : null)); back(); open('about'); break;
     case 'ask': {
       const items = L.filled(d.items);
       add(() => { const it = pickOf(r, items); return it ? { type: 'answer', id: it.id, field: r() < 0.5 ? 'satisfied' : 'leverage', value: r() < 0.6 } : null; },
-        () => (L.allAnswered(d.items) ? { type: 'askDone' } : null), () => ({ type: 'stepBack' }), () => ({ type: 'open', to: 'about' }));
+        () => (L.allAnswered(d.items) ? { type: 'askDone' } : null));
+      back();
+      open('about');
       break;
     }
     case 'pick': {
       const list = L.pickOrder(d.items);
       add(() => (list.length ? { type: 'choose', id: pickOf(r, list).id } : null), () => (list.length ? null : { type: 'stepBack' }),
-        () => (L.validChoice(d.items, d.chosenId) ? { type: 'startBlock', min: pickOf(r, v.small ? LENGTHS.small : LENGTHS.full) } : null),
-        () => ({ type: 'open', to: 'about' }));
+        () => (L.validChoice(d.items, d.chosenId) ? { type: 'startBlock', min: pickOf(r, v.small ? LENGTHS.small : LENGTHS.full) } : null));
+      open('about');
       break;
     }
     case 'block':
       add(() => (b && L.canPause(b) ? { type: 'pause' } : null), () => (b?.pausedAt != null ? { type: 'resume' } : null),
-        () => (b?.pausedAt == null ? { type: 'drift' } : null), () => ({ type: 'stop' }), () => ({ type: 'tick' }), () => ({ type: 'tick' }), () => ({ type: 'open', to: 'about' }));
+        () => (b?.pausedAt == null ? { type: 'drift' } : null), () => ({ type: 'stop' }), () => ({ type: 'tick' }), () => ({ type: 'tick' }));
+      open('about');
       break;
-    case 'close': add(() => ({ type: 'didIt', didIt: r() < 0.5 }), () => (d.didIt !== null ? { type: 'closeDay' } : null),
-      () => ({ type: 'open', to: 'about' }), () => ({ type: 'open', to: 'days' })); break;
-    case 'closed': add(() => ({ type: 'startOver' }), () => ({ type: 'open', to: 'days' }), () => ({ type: 'open', to: 'about' })); break;
-    case 'about': add(() => ({ type: 'back' }), () => ({ type: 'open', to: 'days' })); break;
+    case 'close': add(() => ({ type: 'didIt', didIt: r() < 0.5 }), () => (d.didIt !== null ? { type: 'closeDay' } : null)); open('about'); open('days'); break;
+    case 'closed': add(() => ({ type: 'startOver' })); open('days'); open('about'); break;
+    case 'about': add(() => ({ type: 'back' })); open('days'); break;
     case 'days': add(() => ({ type: 'back' })); break;
   }
-  for (;;) { const a = pickOf(r, opts)(); if (a) return a; }
-}
+  const total = opts.reduce((x, o) => x + o.w, 0);
+  for (;;) {
+    let x = r() * total;
+    const o = opts.find((p) => (x -= p.w) < 0) ?? opts[opts.length - 1];
+    const a = o.f();
+    if (a) return a;
+  }
+};
+const uiAction = gated(UNIFORM);
+const uiWeighted = gated(WEIGHTED);
 
 // ---------- the invariants ----------
 /** The first broken invariant, or null. `prev` and `action` are the step that led here. */
@@ -168,7 +204,7 @@ function brokenState(s: S.State): string | null {
   return null;
 }
 
-// ---------- (a) master's App.tsx at 8f5dbaa, as a model over logic.ts ----------
+// ---------- (a) the old App.tsx (8f5dbaa), as a model over logic.ts ----------
 // The store is modeled as App kept it (store.days): every shown day is put into it, and a rollover puts the day being left.
 const putDay = (days: L.Day[], d: L.Day) => L.putDay({ days, archive: {} }, d).days;
 const keyOf = (now: number) => L.dayKey(new Date(now));
@@ -179,16 +215,16 @@ function resumeScreen(d: L.Day): string {
   if (d.block) return 'close';
   return 'welcome';
 }
-/** master's L.screenForBlock at 8f5dbaa (the repair from 6ef125f). This change removes it from logic.ts: the block screen
+/** L.screenForBlock as it was at 8f5dbaa (the repair from 6ef125f). This change removes it from logic.ts: the block screen
  *  type cannot hold an ended block, so the reducer never needs it. */
 function screenForBlock(screen: string, block: L.Block | null): string {
   if (screen !== 'block') return screen;
   if (!block) return 'pick';
   return block.endedAt != null ? 'close' : screen;
 }
-// master passed the screen as a string, overlay names included (About over a block passes 'about'); logic.ts now takes
+// the old App.tsx passed the screen as a string, overlay names included (About over a block passes 'about'); logic.ts now takes
 // only a day screen. An overlay name falls through to `day.block == null`, which is what the day screen under it gives.
-const masterShouldRollOver = (day: L.Day, screen: string, now: number) => L.shouldRollOver(day, screen as L.DayScreen, now);
+const oldShouldRollOver = (day: L.Day, screen: string, now: number) => L.shouldRollOver(day, screen as L.DayScreen, now);
 
 type Repairs = { validChoice: boolean; screenForBlock: boolean; stack: boolean };
 const ALL: Repairs = { validChoice: true, screenForBlock: true, stack: true };
@@ -198,13 +234,13 @@ const NONE: Repairs = { validChoice: false, screenForBlock: false, stack: false 
 type Seen = { day: L.Day; screen: string; store: L.Day[]; now: number; block: L.Block | null };
 type Legacy = { screen: string; stack: string[]; day: L.Day; small: boolean; now: number; store: L.Day[]; notified: number; seen: Seen | null };
 
-/** One user action, tick or check in master's App.tsx, then the effects that follow it until nothing changes. `at` is
+/** One user action, tick or check in the old App.tsx, then the effects that follow it until nothing changes. `at` is
  *  clockNow() at the handler; the effects' check reads the clock again (the same instant here). */
 function legacyStep(m: Legacy, a: S.Action, at: number, fix: Repairs): Legacy {
   let { screen, stack, day, small, now, store } = m;
-  // before a block starts, drop a choice that is no longer in the pick list (master's withItems)
+  // before a block starts, drop a choice that is no longer in the pick list (the old withItems)
   const withItems = (d: L.Day, items: L.Item[]): L.Day => ({ ...d, items, chosenId: d.block || !fix.validChoice ? d.chosenId : L.validChoice(items, d.chosenId) });
-  // master's rollOver: `next` from the store as this render has it; save and put `from`; a new day starts without the toggle
+  // the old rollOver: `next` from the store as this render has it; save and put `from`; a new day starts without the toggle
   const rollOver = (from: L.Day) => {
     const date = keyOf(at);
     const next = store.find((d) => d.date === date) ?? L.newDay(date, at);
@@ -234,30 +270,30 @@ function legacyStep(m: Legacy, a: S.Action, at: number, fix: Repairs): Legacy {
     case 'tick': if (screen === 'block') now = at; break; // the timer runs only on the block screen
     case 'didIt': if (screen === 'close') day = { ...day, didIt: a.didIt, doneText: a.didIt ? chosen?.text ?? null : null }; break; // onAnswer
     case 'closeDay': // Close onDone: a day carried past midnight moves straight on to the real today, in this handler
-      if (screen === 'close') { const closed = { ...day, closed: true }; if (masterShouldRollOver(closed, 'closed', at)) rollOver(closed); else { day = closed; screen = 'closed'; } }
+      if (screen === 'close') { const closed = { ...day, closed: true }; if (oldShouldRollOver(closed, 'closed', at)) rollOver(closed); else { day = closed; screen = 'closed'; } }
       break;
     case 'startOver': if (screen === 'closed') { day = L.newDay(keyOf(at), at); small = false; screen = 'welcome'; } break;
     case 'open': stack = [...stack, screen]; screen = a.to; break; // the header About, See your days, Your days on About
     case 'back': if (overlay(screen)) { screen = stack[stack.length - 1] ?? resumeScreen(day); stack = stack.slice(0, -1); } break;
-    case 'rollover': if (masterShouldRollOver(day, screen, at)) rollOver(day); break; // the interval, focus or visibility check
+    case 'rollover': if (oldShouldRollOver(day, screen, at)) rollOver(day); break; // the interval, focus or visibility check
     case 'otherTabClosed': if (a.theirs && L.supersedes(a.theirs, day)) { day = a.theirs; if (overlay(screen)) stack = ['closed']; else screen = 'closed'; } break; // pull
   }
   return legacyEffects({ ...m, screen, stack, day, small, now, store }, at, fix);
 }
-/** master's effects, in App.tsx order, each when its dependencies changed. Each reads the committed render and sets state
+/** The old App.tsx's effects, in their order, each when its dependencies changed. Each reads the committed render and sets state
  *  for the next one, so they run in rounds until a render changes nothing. */
 function legacyEffects(m: Legacy, at: number, fix: Repairs): Legacy {
   let { screen, stack, day, small, store, notified, seen } = m;
   const { now } = m;
   for (let round = 0; ; round++) {
-    if (round > 10) throw new Error('master model: effects never settle');
+    if (round > 10) throw new Error('old App model: effects never settle');
     const r0 = { day, screen, store, now, block: day.block };
     const changed = (k: keyof Seen) => !seen || seen[k] !== r0[k];
     if (seen && !(['day', 'screen', 'store', 'now', 'block'] as const).some(changed)) break;
     if (changed('day')) store = putDay(store, r0.day); // setStore((st) => putDay(st, day))
     // the date check, [day, screen, rollOver] (rollOver changes with store and screen)
     if (changed('day') || changed('screen') || changed('store')) {
-      if (masterShouldRollOver(r0.day, r0.screen, at)) {
+      if (oldShouldRollOver(r0.day, r0.screen, at)) {
         const date = keyOf(at);
         const next = r0.store.find((d) => d.date === date) ?? L.newDay(date, at);
         store = putDay(store, r0.day);
@@ -281,7 +317,7 @@ function legacyEffects(m: Legacy, at: number, fix: Repairs): Legacy {
   }
   return { screen, stack, day, small, now, store, notified, seen };
 }
-// master's first render: activeDay, else a new day, on its resumeScreen; the effects then run once (the settle effect
+// the old App.tsx's first render: activeDay, else a new day, on its resumeScreen; the effects then run once (the settle effect
 // settles a running block at the first render's now)
 const legacyInit = (fix: Repairs) => (now: number, stored: L.Day[]): Legacy => {
   const day = L.activeDay(stored, now).day ?? L.newDay(keyOf(now), now);
@@ -289,7 +325,7 @@ const legacyInit = (fix: Repairs) => (now: number, stored: L.Day[]): Legacy => {
 };
 const legacyView = (m: Legacy): View => ({ screen: m.screen, day: m.day, small: m.small, under: overlay(m.screen) ? m.stack[0] ?? resumeScreen(m.day) : null,
   back: overlay(m.screen) ? m.stack : [], store: m.store, notified: m.notified });
-const legacy = (fix: Repairs): Model<Legacy> => ({ init: legacyInit(fix), view: legacyView, step: (m, a, at) => legacyStep(m, a, at, fix) });
+const legacy = (fix: Repairs): Model<Legacy> => ({ init: legacyInit(fix), view: legacyView, step: (m, a, at) => legacyStep(m, a, at, fix), put: (m, d) => ({ ...m, store: putDay(m.store, d) }) });
 
 // ---------- the reducer, alone and inside a model of the new App.tsx ----------
 const stateView = (s: S.State, store: L.Day[] = [], notified = 0): View => {
@@ -306,6 +342,7 @@ const bare: Model<Bare> = {
     const s = S.reduce(m.s, a.type === 'rollover' ? { ...a, stored: m.store } : a, at);
     return { s, store: putDay(m.store, S.dayOf(s)) };
   },
+  put: (m, d) => ({ ...m, store: putDay(m.store, d) }),
 };
 /** What App.tsx does around the reducer: send() runs it at `at`; then, as React commits, the rollover check (a layout
  *  effect on day, the day screen, store and screen: it saves the day being left, then sends `rollover`), the store put
@@ -351,19 +388,57 @@ const app: Model<AppM> = {
     const s = S.reduce(m.s, a, at);
     return s === m.s ? m : appCommit({ ...m, s }, at);
   },
+  put: (m, d) => ({ ...m, store: putDay(m.store, d) }),
 };
 
 // ---------- runner ----------
-type Model<M> = { init: (now: number, stored: L.Day[]) => M; view: (m: M) => View; step: (m: M, a: S.Action, at: number) => M };
+/** `put` is another tab saving a day into the store this tab holds. */
+type Model<M> = { init: (now: number, stored: L.Day[]) => M; view: (m: M) => View; step: (m: M, a: S.Action, at: number) => M; put: (m: M, d: L.Day) => M };
 const T0 = new Date('2026-10-14T06:00:00').getTime();
 /** A reload: the app starts again from what is stored. */
 const RELOAD = 0.04;
+/** After midnight, how often another tab has already saved a record for the new date before the check runs. */
+const STORED_AHEAD = 0.3;
+const STORED_KINDS = ['plan', 'running', 'ended', 'closed'] as const;
+type StoredKind = (typeof STORED_KINDS)[number];
+/** A record another tab saved for `date`: a plan, a running block, an ended block or a closed day. Its openedAt is one
+ *  second before `now`, so the runner can tell it from a new day the rollover opened. */
+function storedAhead(r: Rnd, date: string, now: number): { kind: StoredKind; day: L.Day } {
+  const kind = pickOf(r, STORED_KINDS);
+  const items = L.addOrTag(L.addOrTag([], 'Taxes', 'risky', 's1').items, 'Call mom', 'anxious', 's2').items;
+  // s1 has a yes, so it is on the pick list: the only choice a tab can save before a block
+  const plan: L.Day = { ...L.newDay(date, now - 1000), items: items.map((i) => (i.id === 's1' ? { ...i, satisfied: true } : i)), chosenId: r() < 0.5 ? 's1' : null };
+  if (kind === 'plan') return { kind, day: plan };
+  const started = L.startBlock(pickOf(r, LENGTHS.full), now - pickOf(r, [0, 1000, 5 * MIN]));
+  if (kind === 'running') return { kind, day: { ...plan, chosenId: 's1', block: started } };
+  const ended: L.Day = { ...plan, chosenId: 's1', block: L.stop(started, now - 1000), gotBlock: false };
+  if (kind === 'ended') return { kind, day: ended };
+  return { kind, day: { ...ended, didIt: true, doneText: 'Taxes', closed: true } };
+}
+/** Puts a record for the date of `now` into the store before the check, now and then, when the open day is an earlier
+ *  date and nothing is stored for it yet: the check (and every model's rollover) then has to open it. It draws from its
+ *  own random stream, so the actions each seed generates are the same with it or without it. */
+function aheadOf<M>(model: Model<M>, r: Rnd, m: M, now: number): { m: M; ahead: { kind: StoredKind; day: L.Day } | null } {
+  const v = model.view(m);
+  const date = keyOf(now);
+  if (r() >= STORED_AHEAD || v.day.date >= date || v.store.some((d) => d.date === date)) return { m, ahead: null };
+  const ahead = storedAhead(r, date, now);
+  // a running block is put only when this check opens it at once: opened later (after closing a day carried past
+  // midnight) the App.tsx before this reducer settles it with the time of its last tick, a known difference (docs/architecture.md)
+  if (ahead.kind === 'running' && !L.shouldRollOver(v.day, (v.under ?? v.screen) as L.DayScreen, now)) return { m, ahead: null };
+  return { m: model.put(m, ahead.day), ahead };
+}
 type Found = { seed: number; step: number; why: string; trail: string[] };
 const label = (a: S.Action) => (a.type === 'editItems' ? `editItems(${a.items.map((i) => i.text).join('|')})` : a.type);
-/** Runs `seeds` seeded sequences of one model; after every step the interval check runs (master checks every minute and on focus). */
-function run<M>(model: Model<M>, gen: (r: Rnd, v: View, n: number) => S.Action, seeds = SEQUENCES, extra?: (m: M) => string | null): Found | null {
-  for (let seed = 1; seed <= seeds; seed++) {
+/** The seeds 1 to n, or exactly the ones listed. */
+const seedsOf = (seeds: number | number[]) => (Array.isArray(seeds) ? seeds : Array.from({ length: seeds }, (_, i) => i + 1));
+type RunOpts<M> = { seeds?: number | number[]; extra?: (m: M) => string | null; ahead?: boolean };
+/** Runs seeded sequences of one model; after every step the interval check runs (the App.tsx before this reducer checks
+ *  every minute and on focus). With `ahead`, another tab sometimes saved the new date's record first (aheadOf). */
+function run<M>(model: Model<M>, gen: Gen, { seeds = SEQUENCES, extra, ahead = false }: RunOpts<M> = {}): Found | null {
+  for (const seed of seedsOf(seeds)) {
     const r = mulberry32(seed);
+    const r2 = mulberry32(seed + 0x9e3779b9);
     let now = T0 + Math.floor(r() * 18 * 60) * MIN;
     let m = model.init(now, []);
     const trail: string[] = [];
@@ -380,7 +455,9 @@ function run<M>(model: Model<M>, gen: (r: Rnd, v: View, n: number) => S.Action, 
       }
       const a = gen(r, v, n);
       trail.push(label(a));
-      m = model.step(model.step(m, a, now), { type: 'rollover', stored: [] }, now);
+      m = model.step(m, a, now);
+      if (ahead) { const x = aheadOf(model, r2, m, now); m = x.m; if (x.ahead) trail.push(`stored ${x.ahead.kind}`); }
+      m = model.step(m, { type: 'rollover', stored: [] }, now);
       const why = broken(v, a, model.view(m)) ?? extra?.(m) ?? null;
       if (why) return { seed, step: n, why, trail };
     }
@@ -388,10 +465,18 @@ function run<M>(model: Model<M>, gen: (r: Rnd, v: View, n: number) => S.Action, 
   return null;
 }
 /** What the comparison compares; the toggle only while planning (see the header). */
-const key = (w: View) => JSON.stringify([w.screen, w.back, w.day, [...w.store].sort((x, y) => (x.date < y.date ? -1 : 1)), w.notified, PLANNING.includes(w.under ?? w.screen) ? w.small : null]);
+// The key is JSON.stringify of [screen, back, day, the store by date, notified, small], built from parts: each day's JSON
+// is kept per day object (a day is never changed in place), and two views are compared part by part, so an unchanged
+// store is neither written out nor joined again at every step.
+const json = new WeakMap<L.Day, string>();
+const dayJson = (d: L.Day) => { let j = json.get(d); if (j === undefined) json.set(d, (j = JSON.stringify(d))); return j; };
+const parts = (w: View) => [JSON.stringify([w.screen, w.back]).slice(1, -1), dayJson(w.day), `[${w.store.length}`,
+  ...[...w.store].sort((x, y) => (x.date < y.date ? -1 : 1)).map(dayJson), JSON.stringify([w.notified, PLANNING.includes(w.under ?? w.screen) ? w.small : null]).slice(1, -1)];
+const key = (w: View) => { const [head, day, , ...rest] = parts(w); const tail = rest.pop(); return `[${head},${day},[${rest.join(',')}],${tail}]`; };
+const sameView = (v: View, w: View) => { const a = parts(v), b = parts(w); return a.length === b.length && a.every((x, i) => x === b[i]); };
 const show = (f: Found | null) => (f ? `seed ${f.seed}, step ${f.step}: ${f.why}\n  after ${f.trail.join(' > ')}` : 'none');
 
-describe('BG-1 invariants, master\'s App.tsx (model over logic.ts)', () => {
+describe('BG-1 invariants, the App.tsx before this reducer (8f5dbaa, a model over logic.ts)', () => {
   it('with its repairs, UI-gated: no invalid state in 5000 sequences', () => {
     expect(show(run(legacy(ALL), uiAction))).toBe('none');
   });
@@ -400,13 +485,28 @@ describe('BG-1 invariants, master\'s App.tsx (model over logic.ts)', () => {
     console.log('[legacy, repairs, ungated] first invalid state:', show(f));
     expect(f).not.toBeNull();
   });
-  it('without the repairs (0fd3abe logic), UI-gated: reaches an invalid state', () => {
+  it('without the repairs (0fd3abe logic), UI-gated: the 6ef125f state, End block leaves the user on the timer (seed 82, step 21)', () => {
     const f = run(legacy(NONE), uiAction);
     console.log('[legacy, no repairs] first invalid state:', show(f));
-    expect(f).not.toBeNull();
+    expect(show(f)).toMatch(/^seed 82, step 21: block screen without a running block \(block ended: stopped\)/);
   });
-  it('logs what each repair, left out on its own, lets through', () => {
-    for (const k of ['validChoice', 'screenForBlock', 'stack'] as const) console.log(`[legacy, without ${k}] first invalid state:`, show(run(legacy({ ...ALL, [k]: false }), uiAction, SEEDS)));
+  // each repair left out on its own, the others kept. The seeds are the first ones of the uniform mix that find a state;
+  // a change to that mix or to the runner's use of the random stream moves them
+  it('without screenForBlock alone: the same state, seed 82, step 21', () => {
+    expect(show(run(legacy({ ...ALL, screenForBlock: false }), uiAction))).toMatch(/^seed 82, step 21: block screen without a running block \(block ended: stopped\)/);
+  });
+  it('without validChoice alone: a stale choice before a block, seed 38359, step 31 (the first of 100000; run alone here)', () => {
+    expect(show(run(legacy({ ...ALL, validChoice: false }), uiAction, { seeds: [38359] }))).toMatch(/^seed 38359, step 31: before a block, chosen item i14 is not in the pick list/);
+  });
+  it('without the stack clearing alone: no invalid state (the invariants cannot see it; the step comparison and the mutation runs do)', () => {
+    // a stale stack only changes where Done goes back to, and every place it goes is a valid screen; the comparison's
+    // `back` is what catches it, which is why this repair has no seed of its own
+    const f = run(legacy({ ...ALL, stack: false }), uiAction, { seeds: SEEDS });
+    console.log('[legacy, without stack] first invalid state:', show(f));
+    expect(show(f)).toBe('none');
+  });
+  it('logs what validChoice, left out on its own, lets through in SEEDS sequences (none in 5000; SEEDS=100000 finds seed 38359)', () => {
+    console.log('[legacy, without validChoice] first invalid state:', show(run(legacy({ ...ALL, validChoice: false }), uiAction, { seeds: SEEDS })));
   });
   it.runIf(ENV.REPLAY)('REPLAY: the invariants as a must-pass check on the 0fd3abe logic (expected to fail)', () => {
     expect(show(run(legacy(NONE), uiAction))).toBe('none');
@@ -415,10 +515,14 @@ describe('BG-1 invariants, master\'s App.tsx (model over logic.ts)', () => {
 
 describe('BG-1 invariants, the reducer (state.ts)', () => {
   it('any action at any time: no invalid state in 5000 sequences', () => {
-    expect(show(run(bare, anyAction, SEEDS, (m) => brokenState(m.s)))).toBe('none');
+    expect(show(run(bare, anyAction, { seeds: SEEDS, extra: (m) => brokenState(m.s), ahead: true }))).toBe('none');
   });
+  // the comparison below replays exactly these sequences through the same model, so it checks them once for both
   it('UI-gated, inside the model of App.tsx: no invalid state in 5000 sequences', () => {
-    expect(show(run(app, uiAction, SEEDS, (m) => brokenState(m.s)))).toBe('none');
+    expect(show(compared(uiAction).invalid)).toBe('none');
+  });
+  it('UI-gated with the weighted mix (through the block, Close and midnight), inside the model of App.tsx: no invalid state in 5000 sequences', () => {
+    expect(show(compared(uiWeighted).invalid)).toBe('none');
   });
 
   const go = (s: S.State, as: S.Action[], at = T0) => as.reduce((x, a) => S.reduce(x, a, at), s);
@@ -430,9 +534,9 @@ describe('BG-1 invariants, the reducer (state.ts)', () => {
     let s = go(toPick(S.init([], T0)), [{ type: 'choose', id: 'a' }]);
     expect(S.dayOf(s).chosenId).toBe('a');
     s = S.init([S.dayOf(s)], T0); // reload: Welcome, with the stored choice
-    expect(S.dayOf(s).chosenId).toBe('a'); // kept as stored, as master keeps it
+    expect(S.dayOf(s).chosenId).toBe('a'); // kept as stored, as the old App.tsx kept it
     s = go(s, [{ type: 'start' }, { type: 'editItems', items: S.dayOf(s).items.filter((i) => i.id !== 'a') }]);
-    expect(S.dayOf(s).chosenId).toBe(null); // withItems drops it on the edit, as master does, so the stored record agrees
+    expect(S.dayOf(s).chosenId).toBe(null); // withItems drops it on the edit, as the old App.tsx did, so the stored record agrees
     s = go(s, [{ type: 'namingDone' }, { type: 'askDone' }]);
     expect(s.screen === 'pick' && s.chosen).toBe(null);
     expect(go(s, [{ type: 'startBlock', min: 120 }])).toBe(s); // Start does nothing without a choice
@@ -461,12 +565,12 @@ describe('BG-1 invariants, the reducer (state.ts)', () => {
     const reloaded = S.init([S.dayOf(s)], T0 + 3 * 60 * MIN);
     expect(reloaded.screen).toBe('block');
     expect(S.completed(reloaded, S.reduce(reloaded, { type: 'tick' }, T0 + 3 * 60 * MIN))).toBe(true);
-    // in the model of App.tsx that first tick gives master's first render: Close, settled, and one notification
+    // in the model of App.tsx that first tick gives the old App.tsx's first render: Close, settled, and one notification
     const opened = app.init(T0 + 3 * 60 * MIN, [S.dayOf(s)]);
     expect([opened.s.screen, opened.notified]).toEqual(['close', 1]);
     expect(key(app.view(opened))).toBe(key(legacyView(legacy(ALL).init(T0 + 3 * 60 * MIN, [S.dayOf(s)]))));
   });
-  it('closing a day carried past midnight: closeDay, then rollover, gives master\'s new day and store', () => {
+  it('closing a day carried past midnight: closeDay, then rollover, gives the old App.tsx\'s new day and store', () => {
     const late = new Date('2026-10-14T23:00:00').getTime();
     const after = new Date('2026-10-15T01:30:00').getTime();
     const s0 = go(toPick(S.init([], late)), [{ type: 'choose', id: 'a' }, { type: 'startBlock', min: 120 }], late);
@@ -486,14 +590,20 @@ describe('BG-1 invariants, the reducer (state.ts)', () => {
     expect(closed.screen).toBe('closed');
     expect(S.reduce(closed, { type: 'rollover', stored: [] }, after).screen).toBe('welcome');
   });
+  it('the comparison key is JSON.stringify of what it compares', () => {
+    const v = app.view(app.init(T0, [{ ...L.newDay('2026-10-13', T0 - 24 * 60 * MIN), items: two() }]));
+    expect(key(v)).toBe(JSON.stringify([v.screen, v.back, v.day, [...v.store].sort((x, y) => (x.date < y.date ? -1 : 1)), v.notified, v.small]));
+    expect(sameView(v, { ...v, store: [...v.store, S.dayOf(S.init([], T0))] })).toBe(false);
+    expect(sameView(v, { ...v, day: { ...v.day } })).toBe(true); // by value, not by object
+  });
   it('choose with an id that is not on the list clears the choice (the UI only offers listed items)', () => {
     const s = go(toPick(S.init([], T0)), [{ type: 'choose', id: 'a' }]);
     const off = S.reduce(s, { type: 'choose', id: 'nope' }, T0);
     expect(off.screen === 'pick' && off.chosen).toBe(null);
     expect(S.dayOf(off).chosenId).toBe(null);
   });
-  it('known difference, hand-edited store only: a closed day with a running block stays Closed (master settled it on load and showed Close)', () => {
-    // no tab writes this: closing needs an ended block. master's settle effect ran on any screen, so on the next load it
+  it('known difference, hand-edited store only: a closed day with a running block stays Closed (the old App.tsx settled it on load and showed Close)', () => {
+    // no tab writes this: closing needs an ended block. The old settle effect ran on any screen, so on the next load it
     // ended the block, sent "Your block is done" and showed Close on a closed day; the reducer opens Closed and leaves it
     const day: L.Day = { ...L.newDay('2026-10-14', T0), items: two(), chosenId: 'a', block: L.startBlock(120, T0), closed: true };
     const later = T0 + 3 * 60 * MIN;
@@ -506,6 +616,61 @@ describe('BG-1 invariants, the reducer (state.ts)', () => {
     const closed: S.State = { screen: 'closed', day: { ...L.newDay('2026-10-14', T0), closed: true } };
     for (const a of [{ type: 'editItems', items: [] }, { type: 'answer', id: 'x', field: 'satisfied', value: true }, { type: 'namingDone' }] as S.Action[])
       expect(S.reduce(closed, a, T0)).toBe(closed);
+  });
+  describe('rollover', () => {
+    const late = new Date('2026-10-14T23:00:00').getTime();
+    const after = new Date('2026-10-15T01:30:00').getTime();
+    const plan: S.PlanDay = { ...L.newDay('2026-10-14', late), items: two(), chosenId: null, block: null, closed: false };
+    const running: S.RunningDay = { ...plan, chosenId: 'a', block: { ...L.startBlock(120, late), endedAt: null }, closed: false };
+    const ended: S.EndedDay = { ...running, block: { ...running.block, endedAt: late + 30 * MIN, endReason: 'stopped' } };
+    const closedDay: S.ClosedDay = { ...ended, didIt: true, closed: true };
+    const blockS: S.BlockScreen = { screen: 'block', day: running, now: late };
+    const closeS: S.Close = { screen: 'close', day: ended };
+    const closedS: S.Closed = { screen: 'closed', day: closedDay };
+    const welcomeS: S.Welcome = { screen: 'welcome', day: plan, small: true };
+    const overlays = (b: S.Base): S.State[] => [b, { screen: 'about', under: b, prev: [] }, { screen: 'days', under: b, prev: ['about'] }];
+    const roll = (s: S.State, stored: L.Day[] = []) => S.reduce(s, { type: 'rollover', stored }, after);
+    // what another tab saved for the new date: the rollover opens it where it stands
+    const theirs = { ...L.newDay('2026-10-15', after - MIN), items: two() };
+    const theirBlock = L.startBlock(120, after - 10 * MIN);
+    const theirRunning: L.Day = { ...theirs, chosenId: 'a', block: theirBlock };
+    const theirEnded: L.Day = { ...theirRunning, block: L.stop(theirBlock, after - 5 * MIN) };
+    /** A rollover at `after` with nothing stored opens Welcome on the new date; an open overlay stays open over it. */
+    const expectMoved = (s: S.State) => {
+      const n = roll(s);
+      expect([n.screen, S.base(n).screen, S.dayOf(n).date]).toEqual([S.isOverlay(s) ? s.screen : 'welcome', 'welcome', '2026-10-15']);
+    };
+
+    it('opens a record stored for the new date: an ended block on Close, a running block on the block screen at now, a closed day on Closed', () => {
+      expect(roll(welcomeS, [theirEnded])).toEqual({ screen: 'close', day: theirEnded });
+      expect(roll(welcomeS, [theirRunning])).toEqual({ screen: 'block', day: theirRunning, now: after });
+      const theirClosed = { ...theirEnded, didIt: false, closed: true };
+      expect(roll(welcomeS, [plan, theirClosed])).toEqual({ screen: 'closed', day: theirClosed });
+      // a stored plan opens on Welcome as stored, without the toggle
+      expect(roll(welcomeS, [theirs])).toEqual({ screen: 'welcome', day: theirs, small: false });
+    });
+    it('with nothing stored for the new date, opens Welcome on a new day', () => {
+      expect(roll(welcomeS, [plan])).toEqual({ screen: 'welcome', small: false, day: L.newDay('2026-10-15', after) });
+    });
+    it('under an overlay, opens the new day under it, and Done goes straight to it', () => {
+      const s = roll({ screen: 'days', under: welcomeS, prev: ['about'] }, [theirEnded]);
+      expect(s).toEqual({ screen: 'days', under: { screen: 'close', day: theirEnded }, prev: [] });
+      expect(S.reduce(s, { type: 'back' }, after)).toEqual({ screen: 'close', day: theirEnded });
+    });
+    it('never moves a running block or an ended one that is not closed yet (block and Close, also under About or Your days)', () => {
+      for (const s of [...overlays(blockS), ...overlays(closeS)]) expect(roll(s, [theirs])).toBe(s);
+    });
+    it('always moves a closed day, and a day still being planned on every planning screen', () => {
+      for (const s of overlays(closedS)) expectMoved(s);
+      // a closed day whose block still runs (a hand-edited store) moves too
+      expectMoved({ screen: 'closed', day: { ...running, closed: true } });
+      const picking = S.pick({ ...plan, items: plan.items.map((i) => ({ ...i, satisfied: true })), chosenId: 'a' }, false);
+      for (const b of [welcomeS, { ...welcomeS, screen: 'name' } as S.Name, { ...welcomeS, screen: 'ask' } as S.Ask, picking])
+        for (const s of overlays(b)) expectMoved(s);
+    });
+    it('on the same date, changes nothing', () => {
+      for (const s of [...overlays(welcomeS), ...overlays(blockS), ...overlays(closedS)]) expect(S.reduce(s, { type: 'rollover', stored: [theirs] }, late + 30 * MIN)).toBe(s);
+    });
   });
   it('invalid states do not compile (each case breaks one rule)', () => {
     const day = L.newDay('2026-10-14', T0);
@@ -532,42 +697,109 @@ describe('BG-1 invariants, the reducer (state.ts)', () => {
   });
 });
 
-describe('the reducer behaves like master\'s App.tsx (same UI-gated sequences, step by step)', () => {
-  it('same screen, way back, day, stored days, notifications and toggle after every action and every check of 5000 sequences', () => {
-    const M = legacy(ALL);
-    const diffs: string[] = [];
-    for (let seed = 1; seed <= SEEDS && diffs.length === 0; seed++) {
-      const r = mulberry32(seed);
-      let now = T0 + Math.floor(r() * 18 * 60) * MIN;
-      let s = app.init(now, []);
-      let m = M.init(now, []);
-      const len = 1 + Math.floor(r() * MAX_LEN);
-      const trail: string[] = [];
-      const same = (n: number, when: string) => {
-        const x = key(app.view(s)), y = key(M.view(m));
-        if (x !== y) diffs.push(`seed ${seed} step ${n} ${when}, after ${trail.join(' > ')}\n  reducer ${x}\n  master  ${y}`);
-        return x === y;
-      };
-      for (let n = 0; n < len; n++) {
-        const v = app.view(s);
-        now += dt(r);
-        if (r() < RELOAD) {
-          trail.push('reload');
-          s = app.init(now, v.store);
-          m = M.init(now, M.view(m).store);
-          if (!same(n, 'after the reload')) break;
-          continue;
-        }
-        const a = uiAction(r, v, n);
-        trail.push(label(a));
-        s = app.step(s, a, now);
-        m = M.step(m, a, now);
-        if (!same(n, 'after the action')) break;
-        s = app.step(s, { type: 'rollover', stored: [] }, now);
-        m = M.step(m, { type: 'rollover', stored: [] }, now);
-        if (!same(n, 'after the check')) break;
+/** How often each action type changed the reducer's state, and how often each screen was on show after a step. Both are
+ *  full Records over the union types, so a new action or screen without an entry here is a compile error, and then a
+ *  coverage failure until a generator reaches it. */
+type Coverage = { changed: Record<S.Action['type'], number>; views: Record<S.Screen, number>; opened: Record<StoredKind, number> };
+const coverage = (): Coverage => ({
+  changed: { start: 0, setSmall: 0, editItems: 0, namingDone: 0, answer: 0, askDone: 0, stepBack: 0, choose: 0, startBlock: 0, pause: 0, resume: 0,
+    drift: 0, stop: 0, tick: 0, didIt: 0, closeDay: 0, startOver: 0, open: 0, back: 0, rollover: 0, otherTabClosed: 0 },
+  views: { welcome: 0, name: 0, ask: 0, pick: 0, block: 0, close: 0, closed: 0, about: 0, days: 0 },
+  opened: { plan: 0, running: 0, ended: 0, closed: 0 },
+});
+/** Feeds the model of App.tsx around the reducer and the model of the App.tsx before it the same UI-gated sequences and
+ *  compares them after every action, every reload and every check; stops at the first difference. The sequences are
+ *  the ones run(app, gen, { ahead: true }) makes, and the model of App.tsx is held to the same invariants on the way
+ *  (`invalid`, the first one broken), so the invariants tests read them from here instead of running them again. */
+function compare(gen: Gen): { diffs: string[]; cov: Coverage; invalid: Found | null } {
+  const M = legacy(ALL);
+  const both: Model<{ s: AppM; m: Legacy }> = {
+    init: (now, stored) => ({ s: app.init(now, stored), m: M.init(now, stored) }),
+    view: (x) => app.view(x.s),
+    step: (x, a, at) => ({ s: app.step(x.s, a, at), m: M.step(x.m, a, at) }),
+    put: (x, d) => ({ s: app.put(x.s, d), m: M.put(x.m, d) }),
+  };
+  const diffs: string[] = [];
+  const cov = coverage();
+  let invalid: Found | null = null;
+  for (let seed = 1; seed <= SEEDS && diffs.length === 0; seed++) {
+    const r = mulberry32(seed);
+    const r2 = mulberry32(seed + 0x9e3779b9);
+    let now = T0 + Math.floor(r() * 18 * 60) * MIN;
+    let x = both.init(now, []);
+    const len = 1 + Math.floor(r() * MAX_LEN);
+    const trail: string[] = [];
+    const same = (n: number, when: string) => {
+      const v = app.view(x.s), w = M.view(x.m);
+      if (sameView(v, w)) return true;
+      diffs.push(`seed ${seed} step ${n} ${when}, after ${trail.join(' > ')}\n  reducer ${key(v)}\n  before  ${key(w)}`);
+      return false;
+    };
+    const holds = (n: number, prev: View | null, a: S.Action | null) => {
+      const why = invalid ? null : broken(prev, a, app.view(x.s)) ?? brokenState(x.s.s);
+      if (why) invalid = { seed, step: n, why, trail: [...trail] };
+    };
+    const step = (a: S.Action) => {
+      const before = x.s.s;
+      x = both.step(x, a, now);
+      if (x.s.s !== before) cov.changed[a.type]++;
+    };
+    for (let n = 0; n < len; n++) {
+      const v = both.view(x);
+      now += dt(r);
+      if (r() < RELOAD) {
+        trail.push('reload');
+        x = both.init(now, v.store);
+        holds(n, null, null);
+        if (!same(n, 'after the reload')) break;
+        continue;
       }
+      const a = gen(r, v, n);
+      trail.push(label(a));
+      step(a);
+      if (!same(n, 'after the action')) break;
+      const { m, ahead } = aheadOf(both, r2, x, now);
+      x = m;
+      if (ahead) trail.push(`stored ${ahead.kind}`);
+      step({ type: 'rollover', stored: [] });
+      holds(n, v, a);
+      if (!same(n, 'after the check')) break;
+      const d = S.dayOf(x.s.s);
+      if (ahead && d.date === ahead.day.date && d.openedAt === ahead.day.openedAt) cov.opened[ahead.kind]++;
+      cov.views[x.s.s.screen]++;
     }
+  }
+  return { diffs, cov, invalid };
+}
+const comparisons = new Map<Gen, ReturnType<typeof compare>>();
+/** compare(gen), run once per mix and shared by the tests that read it. */
+function compared(gen: Gen): ReturnType<typeof compare> {
+  const done = comparisons.get(gen) ?? compare(gen);
+  comparisons.set(gen, done);
+  return done;
+}
+
+describe('the reducer behaves like the App.tsx before it (8f5dbaa): same UI-gated sequences, step by step', () => {
+  it('uniform mix: same screen, way back, day, stored days, notifications and toggle after every action and every check of 5000 sequences', () => {
+    const { diffs, cov } = compared(uiAction);
     expect(diffs).toEqual([]);
+    console.log('[comparison, uniform] state changes by action:', JSON.stringify(cov.changed), '\n  views:', JSON.stringify(cov.views), '\n  stored records opened:', JSON.stringify(cov.opened));
+  });
+  it('weighted mix: the same, through Pick, the block, Close, Closed and midnight, and every action and screen is reached', () => {
+    const { diffs, cov } = compared(uiWeighted);
+    expect(diffs).toEqual([]);
+    console.log('[comparison, weighted] state changes by action:', JSON.stringify(cov.changed), '\n  views:', JSON.stringify(cov.views), '\n  stored records opened:', JSON.stringify(cov.opened));
+    if (SEEDS !== SEQUENCES) return; // the floors are for the 5000 sequences they were measured on
+    // Each floor is about half of what these 5000 sequences give (in brackets), so a change that thins the evidence out
+    // fails here instead of passing quietly. Every action type changes the state at least 200 times, except the rare
+    // ones, which get a lower floor but never zero: a block action needs a whole day planned first (pause [179] is
+    // offered once per block, resume [65] only after a pause, drift [211], stop [265]), closeDay [218] needs a block and
+    // an answer, rollover [245] needs midnight on a day that can move, and otherTabClosed [254] is 0.5% of the steps.
+    const RARE: Partial<Record<S.Action['type'], number>> = { pause: 90, resume: 30, drift: 100, stop: 130, closeDay: 100, rollover: 120, otherTabClosed: 120 };
+    expect(Object.entries(cov.changed).filter(([k, n]) => n < (RARE[k as S.Action['type']] ?? 200)).map(([k, n]) => `${k} ${n}`)).toEqual([]);
+    // every screen, overlays included, is on show after a step at least 300 times (the fewest is closed [648])
+    expect(Object.entries(cov.views).filter(([, n]) => n < 300).map(([k, n]) => `${k} ${n}`)).toEqual([]);
+    // a rollover opened each kind of record another tab saved for the new date (plan [16], running [19], ended [27], closed [15])
+    expect(Object.entries(cov.opened).filter(([, n]) => n < 5).map(([k, n]) => `${k} ${n}`)).toEqual([]);
   });
 });

@@ -1,5 +1,6 @@
 // The app's screen state as one value, changed only by `reduce`. Pure: it imports only ./logic and reads no clock,
-// storage, Notification or DOM; the time of each action comes in as `now` (App.tsx reads now() from src/clock.ts once per action).
+// storage, Notification or DOM; the time of each action comes in as `now` (App.tsx reads now() from src/clock.ts once per
+// action; the Pick late line is its one clock read at render time).
 // Each screen carries exactly what it needs, so a state the UI cannot show cannot be written down: the block screen
 // always has a running block, Close an ended one, Closed a closed day, Pick its list and a choice from it (or none),
 // and About and Your days always know the day screen they go back to.
@@ -7,7 +8,8 @@
 import * as L from './logic';
 
 /** A day still being planned: no block yet, not closed. Its chosenId may still be one a stored copy left behind on
- *  Welcome (master keeps it there too, until the next item edit drops it); Pick never shows one that is off its list. */
+ *  Welcome (the App.tsx before this reducer kept it there too, until the next item edit dropped it); Pick never shows one
+ *  that is off its list. */
 export type PlanDay = L.Day & { block: null; closed: false };
 /** A day whose block is running (not ended, maybe paused). */
 export type RunningDay = L.Day & { block: L.Block & { endedAt: null }; closed: false };
@@ -71,7 +73,8 @@ export type Action =
   | { type: 'rollover'; stored: L.Day[] } // the date may have changed while open; `stored` is the store's days
   | { type: 'otherTabClosed'; theirs: L.Day | undefined }; // what another tab saved for this date
 
-/** The end of an exhaustive switch: a new screen or action with no case is a compile error here. */
+/** The end of an exhaustive switch: a new screen or action with no case is a compile error here. For an action that
+ *  means `reduce` must list it; whether any screen handles it is up to `reduceBase` (see `reduce`). */
 export const never = (x: never): never => { throw new Error(`unhandled: ${JSON.stringify(x)}`); };
 
 export const isClosed = (d: L.Day): d is ClosedDay => d.closed === true;
@@ -88,9 +91,10 @@ export function pick(day: PlanDay, small: boolean): Pick {
   const id = chosen ? chosen.id : null;
   return { screen: 'pick', list, chosen, small, day: id === day.chosenId ? day : { ...day, chosenId: id } };
 }
-/** Where a stored day opens (master's resumeScreen): Closed, the running block, Close after a block, otherwise Welcome.
- *  The day is kept as stored, chosenId included, so what is saved next is what master saved. A running block is not
- *  settled here: App.tsx sends a `tick` when it opens, as master's settle effect ran once on the first render. */
+/** Where a stored day opens (resumeScreen in the App.tsx before this reducer, 8f5dbaa): Closed, the running block, Close
+ *  after a block, otherwise Welcome. The day is kept as stored, chosenId included, so what is saved next is the value
+ *  that App.tsx saved. A running block is not settled here: App.tsx sends a `tick` when it opens, as its old settle
+ *  effect ran once on the first render. */
 export function resume(day: L.Day, now: number): Base {
   if (isClosed(day)) return { screen: 'closed', day };
   if (isRunning(day)) return { screen: 'block', day, now };
@@ -111,17 +115,19 @@ export const dayOf = (s: State): L.Day => base(s).day;
 export const chosenItem = (d: L.Day): L.Item | undefined => d.items.find((i) => i.id === d.chosenId);
 
 // Before a block starts, a choice that is no longer on the pick list is dropped. Pick re-derives its choice anyway
-// (pick()), so this is not what keeps Start honest; it is kept so the stored chosenId stays byte-identical to master's
-// (dropping it would change what is saved on Name and Ask, visible in localStorage).
+// (pick()), so this is not what keeps Start honest; it is kept so the stored chosenId stays the same value the App.tsx
+// before this reducer saved (the comparison checks the day's JSON); dropping it would change what is saved on Name and
+// Ask, visible in localStorage.
 const withItems = (d: PlanDay, items: L.Item[]): PlanDay => ({ ...d, items, chosenId: L.validChoice(items, d.chosenId) });
 
-/** A block action, settled at `now` (master's settle effect, moved here): an ended block (stopped, broken or complete) moves to Close. */
+/** A block action, settled at `now` (the old App.tsx's settle effect, moved here): an ended block (stopped, broken or
+ *  complete) moves to Close. */
 function blockStep(s: BlockScreen, b: L.Block, now: number): BlockScreen | Close {
   const settled = L.settle(b, now);
   const day = { ...s.day, block: settled, gotBlock: L.autoGotBlock(settled, now, s.day.gotBlock) };
   if (isRunning(day)) return { screen: 'block', day, now };
   if (isEnded(day)) return { screen: 'close', day };
-  return s;
+  return s; // unreachable: a settled block is running or ended
 }
 
 /** A day screen's own actions. Anything a screen does not offer leaves it as it is (the same object). */
@@ -202,7 +208,9 @@ export function reduce(s: State, a: Action, now: number): State {
     case 'start': case 'setSmall': case 'editItems': case 'namingDone': case 'answer': case 'askDone': case 'stepBack':
     case 'choose': case 'startBlock': case 'pause': case 'resume': case 'drift': case 'stop': case 'tick':
     case 'didIt': case 'closeDay': case 'startOver':
-      // day screens act only while they are showing, never from under an overlay
+      // day screens act only while they are showing, never from under an overlay. Listing an action here is all tsc
+      // asks for: which screen handles it is a reduceBase case added by hand, and an action every screen ignores still
+      // compiles (the property test's generators and its coverage check are what notice)
       return isOverlay(s) ? s : reduceBase(s, a, now);
     default:
       return never(a);

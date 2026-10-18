@@ -17,6 +17,7 @@ const putDay = (s: Store, d: L.Day): Store => ({ ...s, ...L.putDay(s, d) });
 // The late cutoffs live in LATE_CUTOFFS in src/method.ts: Welcome and Pick differ on purpose until PRODUCT QUESTION Q1 is decided.
 const hrs = (m: number) => (m % 60 ? `${(m / 60).toFixed(1).replace(/\.0$/, '')}h` : `${m / 60}h`).replace('1.5h', '1½h').replace('2.5h', '2½h');
 // the screen state is one value (src/state.ts); every action reads the clock once, in send(), and the reducer gets it as `now`
+// (the Pick late line is the one clock read at render time)
 const step = (s: S.State, m: { action: S.Action; now: number }) => S.reduce(s, m.action, m.now);
 
 export default function App() {
