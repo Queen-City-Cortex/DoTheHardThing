@@ -1,7 +1,9 @@
 // Builds public/og-image.png (1200x630), the OG card: title, tagline, DoTheHardThing.app, and a phone showing the Pick screen.
 // The phone is a real screenshot of the app, so the card follows the app's wording: just re-run this when the Pick screen changes.
 // Run (from the repo root):  npm run build && npx vite preview --port 4173 &   then   node scripts/og/card.mjs
-// Env: OG_URL (default http://127.0.0.1:4173), OG_OUT (default public/og-image.png)
+// Env: OG_URL (default http://127.0.0.1:4173), OG_OUT (default public/og-image.png), OG_TEXT (optional: also write there the
+// text the phone shows, one line per text node; node scripts/check-og.mjs --pixels uses it). The png is the same either way.
+// After rebuilding the card, look at it, then run node scripts/check-og.mjs --write to record what it was built from.
 import { chromium } from '@playwright/test';
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
@@ -15,6 +17,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'og-'));
 const pickPng = path.join(tmp, 'pick.png');
 
 const browser = await chromium.launch();
+let texts = null;
 
 // 1. Screenshot the Pick screen at a frozen time, with a short example list.
 {
@@ -45,6 +48,15 @@ const browser = await chromium.launch();
   await btn(/Talking to leads/).click(); await p.waitForTimeout(200);
   await p.getByRole('radio', { name: '2h', exact: true }).click(); await p.waitForTimeout(300);
   await p.screenshot({ path: pickPng });
+  // every text node on the screen with its top, in CSS px of the 390x844 viewport; step 2 keeps the ones above the phone's crop
+  if (process.env.OG_TEXT) texts = await p.evaluate(() => {
+    const out = []; const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let n = w.nextNode(); n; n = w.nextNode()) {
+      const r = document.createRange(); r.selectNodeContents(n); const b = r.getBoundingClientRect(); const text = n.textContent.replace(/\s+/g, ' ').trim();
+      if (text && b.width > 1 && b.height > 1) out.push({ text, top: b.top });
+    }
+    return { out, height: innerHeight };
+  });
   await ctx.close();
 }
 
@@ -77,5 +89,10 @@ const page = await browser.newPage({ viewport: { width: 1200, height: 630 } });
 await page.goto(pathToFileURL(htmlPath).href);
 await page.evaluate(() => document.fonts.ready);
 await page.screenshot({ path: OUT });
+if (texts) {
+  // the share of the screenshot's height that the phone shows (its inner height over the scaled image's height)
+  const shown = await page.evaluate(() => { const ph = document.querySelector('.phone'); return ph.clientHeight / ph.querySelector('img').getBoundingClientRect().height; });
+  fs.writeFileSync(process.env.OG_TEXT, texts.out.filter((x) => x.top < texts.height * shown).map((x) => x.text).join('\n') + '\n');
+}
 await browser.close();
 console.log('wrote', OUT);

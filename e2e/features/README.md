@@ -25,6 +25,8 @@ This directory describes how to verify the user-facing behavior of Do The Hard T
 
 Each file has an H1 and a one-paragraph description, then `Sub-features`, `How to get to it (user POV)`, `Driving it with vdt` (opening with `Preconditions:`) and `Gotchas`.
 
+Every journey is listed exactly once, in the map its meta's `feature` names, with a "Run `vdt journey <name>`" line (any code span with `vdt journey <name>` in it counts as a listing); another map that needs it writes see `<name>` in [map.md](./map.md). Each sub-feature id is listed in one map only and is proved by some journey's meta `proves`, or its line says "not verified by vdt" (and why). A new journey: wrap it in `journey({ id, feature, proves, strings }, fn)` in `drive.mjs`, add its line here, then run `npm run check:maps`.
+
 ## Features
 
 - [First-visit onboarding](./first-visit.md): the new-user welcome at any hour, and the Name steps (one item can answer several steps).

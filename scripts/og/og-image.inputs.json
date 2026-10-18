@@ -1,0 +1,33 @@
+{
+  "note": "written by node scripts/check-og.mjs --write after rebuilding public/og-image.png with scripts/og/card.mjs: the inputs the png was built from and its sha256",
+  "png": "36d6955fbfd714b680b2332635a51e6254c1441ef15dc5ac391e2b5d9b14c1d5",
+  "inputs": {
+    "files": {
+      "scripts/og/card.mjs": "a00af6b0a0240dbad53e8fe7b5f42f86e12f00c52dc5ee1a5afd17192051e313",
+      "node_modules/@fontsource-variable/newsreader/files/newsreader-latin-wght-normal.woff2": "62981321d9a3cc7a61a73792729043703fd6112da86e8ec848bb57f088578757",
+      "node_modules/@fontsource-variable/newsreader/files/newsreader-latin-wght-italic.woff2": "48bc8861b9b2ca9300747cad4fd6a3b4ac3028d364df00bd1b72097baa75e509",
+      "node_modules/@fontsource-variable/instrument-sans/files/instrument-sans-latin-wght-normal.woff2": "2ee17598a98d8a59e4df8152d015bec9ab8e4d5672cc0ab42bef806b568e3971"
+    },
+    "constants": {
+      "BRAND": "Do The Hard Thing",
+      "DOMAIN_DISPLAY": "DoTheHardThing.app"
+    },
+    "copy": {
+      "about": "About",
+      "pick.eyebrow": "Pick one",
+      "pick.hero": "Which one thing gets today?",
+      "pick.ten": "With ten important things, nothing important gets done. So pick one.",
+      "tag.risky": "risky",
+      "tag.pushed": "pushed",
+      "pick.howLong": "How long",
+      "pick.full": "At least two to three hours, unbroken",
+      "pick.early": "first thing, before the day gets loud.",
+      "pick.slide": "Let the rest slide; it'll still be there tomorrow."
+    },
+    "blockChoices": [
+      120,
+      150,
+      180
+    ]
+  }
+}

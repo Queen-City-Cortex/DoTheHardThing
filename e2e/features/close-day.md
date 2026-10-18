@@ -30,11 +30,11 @@ Preconditions:
 - `vdt doctor` prints OK.
 
 - **Complete, answer, close.** Run `vdt journey close-day`. `clock.runFor('02:00:01')`: the question with nothing chosen (`expectClose`). `Yes`: the first-Yes note and `Your first day. It starts here.`. `Close today`: `One thing, done.`. Reload: `Today is closed`, `See your days`. Storage: `closed: true`, `didIt: true`, `doneText: "Ask for the raise"`.
-- **Short block, Yes counts.** Run `vdt journey short-block-yes-counts`. End after 5 min, the same question, `Yes` gives the first-day line, `Close today`. Next morning `Ask for the raise` is not offered.
-- **Short block, Not today keeps the item.** Run `vdt journey small-block-modified` (a completed 1h block; see [returning-user.md](./returning-user.md)). Not today shows no count line on a first day; the item comes back as `risky · pushed 1×`.
+- **Short block, Yes counts.** See `short-block-yes-counts` in [block-timer.md](./block-timer.md). End after 5 min, the same question, `Yes` gives the first-day line, `Close today`. Next morning `Ask for the raise` is not offered.
+- **Short block, Not today keeps the item.** See `small-block-modified` in [returning-user.md](./returning-user.md) (a completed 1h block). Not today shows no count line on a first day; the item comes back as `risky · pushed 1×`.
 - **First Yes.** Folded into `history-from-close-and-about` (see [history.md](./history.md)); the old `close-first-yes` journey was a strict subset of it. After Yes the main area has no digit at all (checked at its `answer-yes` step), `See your days` lists `Wed 14  Ask for the raise`, and `Done` returns to Close with Yes still on.
 - **Not today with a count.** Run `vdt journey close-not-today-count`. Day 1: Not today (no count line, no digit), switch to Yes, back to Not today, Yes, close. Day 2: Not today shows `1 day you've done your one thing since you started`.
-- **Count only grows.** Run `vdt journey count-grows` (in [history.md](./history.md)).
+- **Count only grows.** See `count-grows` in [history.md](./history.md).
 - **Start over.** Run `vdt journey start-over-confirm` (inline confirm; `Keep today` changes nothing; `Yes, start over` gives Welcome and an empty open record) and `vdt journey start-over-count` (day 1 Yes, day 2 Yes `2 days…`, start over: About shows `Your days 1 ›`, history lists only Wed 14, stored 2026-10-14 untouched).
 - **Yes clears the item.** Run `vdt journey yes-clears-item`. Like close-day, with `Tax letter` answered Yes/No so it carries: next morning `Tax letter … anxious · pushed 1×` and no `Ask for the raise`.
 - **Proof.** `block-complete.*`, `answer-yes.*`, `close.*`, `reload-still-closed.*` and `localStorage.json` in close-day; `answer-yes.*`, `close-to-days.*` and `done-to-close.*` in history-from-close-and-about; `first-not-today.*`, `answer-not-today.*` in close-not-today-count; `ask-start-over.*`, `keep-today.*`, `yes-start-over.*`; `history-keeps-earlier.*` in start-over-count.

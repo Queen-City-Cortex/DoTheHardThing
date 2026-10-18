@@ -28,6 +28,8 @@
     "check:text": "node scripts/check-text.mjs",
     "check:agents-md": "node scripts/check-agents-md.mjs",
     "check:quotes": "node scripts/check-method-quotes.mjs",
+    "check:maps": "node scripts/check-maps.mjs",
+    "check:og": "node scripts/check-og.mjs",
     "check:fast": "node scripts/check.mjs fast",
     "check": "node scripts/check.mjs",
     "check:full": "node scripts/check.mjs full",

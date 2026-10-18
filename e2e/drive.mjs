@@ -245,8 +245,12 @@ const GUISE = t('guise');
 const quote = (p, text) => p.getByRole('blockquote').filter({ hasText: text });
 
 // ---- journeys ----
+// Every journey carries meta, read by scripts/check-maps.mjs without running this file, so keep it a plain literal: `id` is the
+// journey's name, `feature` the map in e2e/features that lists it, `proves` the Sub-features ids (of any map) it proves and
+// `strings` the src/copy.ts ids it asserts. `journey` only attaches the meta: J[name](s) runs the function as before.
+const journey = (meta, fn) => Object.assign(fn, { meta });
 const J = {
-  'first-visit': async (s) => { // the same welcome at 08:00 and (late) at 18:57
+  'first-visit': journey({ id: 'first-visit', feature: 'first-visit', proves: ['fv-welcome', 'fv-name', 'fv-back'], strings: [] }, async (s) => { // the same welcome at 08:00 and (late) at 18:57
     const p = s.page;
     await s.step('welcome', async () => {
       await expect(p.getByRole('banner')).toContainText(BRAND);
@@ -259,8 +263,8 @@ const J = {
     await expect(p.getByRole('button', { name: SKIP })).toBeVisible();
     await s.step('back-to-welcome', async () => { await p.getByRole('button', { name: BACK }).click(); });
     await expect(h1(p)).toHaveText(FIRST_H1);
-  },
-  'name-pending-draft': async (s) => { // Next adds a typed-but-not-added draft under the current tag; the same text again tags it or says it's there
+  }),
+  'name-pending-draft': journey({ id: 'name-pending-draft', feature: 'first-visit', proves: ['fv-draft', 'fv-same-answer'], strings: ['name.risky', 'name.anxious'] }, async (s) => { // Next adds a typed-but-not-added draft under the current tag; the same text again tags it or says it's there
     const p = s.page;
     await p.getByRole('button', { name: READY }).click();
     await s.step('pushed-draft', async () => {
@@ -301,8 +305,8 @@ const J = {
     });
     await expect.poll(async () => (await s.store()).days.at(-1).items.map((i) => [i.text, i.tags]))
       .toEqual([['Call mom', ['pushed', 'risky']], ['Ask for the raise', ['risky']]]);
-  },
-  'same-answer-two-steps': async (s) => { // same answer on two steps: the thing put off is also the risky one; it is one item with both tags
+  }),
+  'same-answer-two-steps': journey({ id: 'same-answer-two-steps', feature: 'first-visit', proves: ['fv-same-answer', 'fv-listed', 'ps-pushed-label'], strings: ['name.risky', 'name.listedTap', 'name.anxious', 'twoQuestions', 'pick.hero'] }, async (s) => { // same answer on two steps: the thing put off is also the risky one; it is one item with both tags
     const p = s.page;
     const Q = 'Talking to leads';
     await s.step('ready', async () => { await p.getByRole('button', { name: READY }).click(); });
@@ -355,15 +359,15 @@ const J = {
     const items = (await s.store()).days.at(-1).items;
     if (items.length !== 1 || items[0].text !== Q || JSON.stringify(items[0].tags) !== '["pushed","risky","anxious"]' || 'tag' in items[0])
       throw new Error('stored items wrong: ' + JSON.stringify(items));
-  },
-  'first-visit-late': async (s) => { await J['first-visit'](s); }, // the same welcome at 18:57, after the late hour: the hour line still shows and there is no `Start where you are`
-  'peek-then-return': async (s) => { // empty evening visit must not make next morning look like a return
+  }),
+  'first-visit-late': journey({ id: 'first-visit-late', feature: 'first-visit', proves: ['fv-welcome-late'], strings: [] }, async (s) => { await J['first-visit'](s); }), // the same welcome at 18:57, after the late hour: the hour line still shows and there is no `Start where you are`
+  'peek-then-return': journey({ id: 'peek-then-return', feature: 'returning-user', proves: ['ru-peek'], strings: [] }, async (s) => { // empty evening visit must not make next morning look like a return
     const p = s.page;
     await s.step('evening-peek', async () => { await expect(h1(p)).toHaveText(FIRST_H1); });
     await p.clock.setSystemTime(new Date('2026-10-15T08:00:00')); await p.reload();
     await s.step('next-morning', async () => { await expect(h1(p)).toHaveText(FIRST_H1); });
-  },
-  'start-end-block': async (s) => {
+  }),
+  'start-end-block': journey({ id: 'start-end-block', feature: 'block-timer', proves: ['bt-countdown', 'bt-end', 'ps-name', 'ps-ask', 'ps-start'], strings: ['block.end'] }, async (s) => {
     const p = s.page;
     await throughToPick(s); await startBlock(s);
     await p.clock.runFor('05:00');
@@ -372,8 +376,8 @@ const J = {
     await expectClose(p);
     const st = await s.store(); const d = st.days.at(-1);
     if (d.block?.endReason !== 'stopped' || d.didIt !== null) throw new Error('stored block not stopped or already answered: ' + JSON.stringify(d));
-  },
-  'short-block-yes-counts': async (s) => { // ending after 5 min and answering Yes counts the day: no verdict on the block, the item is done
+  }),
+  'short-block-yes-counts': journey({ id: 'short-block-yes-counts', feature: 'block-timer', proves: ['bt-end', 'cd-answer', 'cd-leftovers'], strings: ['block.end', 'name.pushed.hint'] }, async (s) => { // ending after 5 min and answering Yes counts the day: no verdict on the block, the item is done
     const p = s.page;
     await throughToPick(s); await startBlock(s);
     await p.clock.runFor('05:00');
@@ -390,8 +394,8 @@ const J = {
       await expect(p.getByRole('button', { name: /Ask for the raise/ })).toHaveCount(0);
       await expect(p.getByText(t('name.pushed.hint'))).toBeVisible(); // nothing left over
     });
-  },
-  'small-block-modified': async (s) => { // day 1 ritual, day 2 at 14:00 picks the shorter option; the 1h block ends, Not today keeps the item for tomorrow
+  }),
+  'small-block-modified': journey({ id: 'small-block-modified', feature: 'returning-user', proves: ['ru-small', 'ps-small'], strings: ['bad.hero', 'bad.shorter', 'pick.smallNote'] }, async (s) => { // day 1 ritual, day 2 at 14:00 picks the shorter option; the 1h block ends, Not today keeps the item for tomorrow
     const p = s.page;
     await throughToPick(s);
     await p.clock.setSystemTime(new Date('2026-10-15T14:00:00')); await p.reload();
@@ -410,8 +414,8 @@ const J = {
     const d = (await s.store()).days.find((x) => x.date === '2026-10-15');
     if (d?.didIt !== false || d.doneText !== null || d.block?.endReason !== 'complete' || d.block?.targetMin !== 60) throw new Error('1h block stored wrong: ' + JSON.stringify(d));
     await nextMorningLeftover(s, '2026-10-16T08:00:00');
-  },
-  'yes-clears-item': async (s) => { // a Yes takes the one thing off tomorrow's leftovers; the rest still comes forward
+  }),
+  'yes-clears-item': journey({ id: 'yes-clears-item', feature: 'close-day', proves: ['cd-leftovers'], strings: [] }, async (s) => { // a Yes takes the one thing off tomorrow's leftovers; the rest still comes forward
     const p = s.page;
     await J['close-day'](s, { answers: [[true, true], [true, false]] }); // Tax letter Yes/No so it carries (No/No would not)
     await p.clock.setSystemTime(new Date('2026-10-15T07:30:00')); await p.reload();
@@ -421,8 +425,8 @@ const J = {
       await expect(p.getByRole('button', { name: /Tax letter.*anxious · pushed 1×/ })).toBeVisible();
       await expect(p.getByRole('button', { name: /Ask for the raise/ })).toHaveCount(0);
     });
-  },
-  'step-away-broken': async (s) => {
+  }),
+  'step-away-broken': journey({ id: 'step-away-broken', feature: 'block-timer', proves: ['bt-broken'], strings: ['block.stepAway', 'block.back'] }, async (s) => {
     const p = s.page;
     await throughToPick(s); await startBlock(s);
     await s.step('step-away', async () => { await p.getByRole('button', { name: t('block.stepAway') }).click(); await expect(p.getByText(HOLDING)).toBeVisible(); });
@@ -432,8 +436,8 @@ const J = {
     await expect(p.getByText('The break ran past 10 minutes', { exact: false })).toHaveCount(0);
     const d = (await s.store()).days.at(-1);
     if (d.block?.endReason !== 'broken') throw new Error('block not broken: ' + JSON.stringify(d.block));
-  },
-  'one-break-per-block': async (s) => { // one short step-away per block; after it, Step away is gone
+  }),
+  'one-break-per-block': journey({ id: 'one-break-per-block', feature: 'block-timer', proves: ['bt-one-break'], strings: ['block.pauseHint', 'block.stepAway', 'block.onePause', 'block.back', 'block.pauseUsed'] }, async (s) => { // one short step-away per block; after it, Step away is gone
     const p = s.page;
     await throughToPick(s); await startBlock(s);
     await expect(p.getByText(t('block.pauseHint'))).toBeVisible();
@@ -449,8 +453,8 @@ const J = {
     await s.step('still-counting', async () => { await expect(p.getByRole('timer')).toContainText('1:54:00'); });
     const b = (await s.store()).days.at(-1).block;
     if (b.breaks !== 1 || b.pausedAt !== null || b.endedAt !== null) throw new Error('stored block wrong: ' + JSON.stringify(b));
-  },
-  'pushed-zero-label': async (s) => { // a pushed item added today (pushedCount 0) reads 'pushed', never 'pushed 0×'
+  }),
+  'pushed-zero-label': journey({ id: 'pushed-zero-label', feature: 'pick-and-start', proves: ['ps-pushed-label'], strings: [] }, async (s) => { // a pushed item added today (pushedCount 0) reads 'pushed', never 'pushed 0×'
     const p = s.page;
     await throughToPick(s, { pushed: ['Call mom'] });
     await s.step('pick-pushed-label', async () => {
@@ -459,8 +463,8 @@ const J = {
       await expect(b).toContainText('pushed');
       await expect(b).not.toContainText('0×');
     });
-  },
-  'pick-order-risky-first': async (s) => { // Pick lists risky (rejection or conflict) first, even ahead of a pushed item written earlier
+  }),
+  'pick-order-risky-first': journey({ id: 'pick-order-risky-first', feature: 'pick-and-start', proves: ['ps-order'], strings: [] }, async (s) => { // Pick lists risky (rejection or conflict) first, even ahead of a pushed item written earlier
     const p = s.page;
     await throughToPick(s, { pushed: ['Tax letter'], risky: ['Ask for the raise'], anxious: [], answers: [[true, true], [true, true]] });
     await s.step('pick-order', async () => {
@@ -469,8 +473,8 @@ const J = {
       await expect(choices.nth(0)).toHaveText(/Ask for the raise/);
       await expect(choices.nth(1)).toHaveText(/Tax letter/);
     });
-  },
-  'carryover-keeps-tag-drops-noyes': async (s) => { // leftovers keep their tag; a No/No item was set aside and does not come back
+  }),
+  'carryover-keeps-tag-drops-noyes': journey({ id: 'carryover-keeps-tag-drops-noyes', feature: 'returning-user', proves: ['ru-leftovers'], strings: ['block.end'] }, async (s) => { // leftovers keep their tag; a No/No item was set aside and does not come back
     const p = s.page;
     await throughToPick(s, { risky: ['Ask for the raise'], anxious: ['Tax letter', 'Old chore'], answers: [[true, true], [true, false], [false, false]] });
     await expect(p.getByRole('button', { name: /Old chore/ })).toHaveCount(0);
@@ -496,8 +500,8 @@ const J = {
     });
     await expect.poll(async () => (await s.store()).days.find((d) => d.date === '2026-10-15')?.items.map((i) => [i.text, i.tags, i.pushedCount]))
       .toEqual([['Ask for the raise', ['risky'], 1]]);
-  },
-  'pick-requires-choice': async (s) => { // Start stays disabled until a listed item is chosen; No/No items are not offered
+  }),
+  'pick-requires-choice': journey({ id: 'pick-requires-choice', feature: 'pick-and-start', proves: ['ps-filter', 'ps-choice'], strings: ['pick.start'] }, async (s) => { // Start stays disabled until a listed item is chosen; No/No items are not offered
     const p = s.page;
     await throughToPick(s, { risky: ['Ask for the raise', 'Call the landlord'], anxious: [] });
     await s.step('pick-list', async () => {
@@ -507,8 +511,8 @@ const J = {
       await p.getByRole('button', { name: /Ask for the raise/ }).click();
       await expect(p.getByRole('button', { name: t('pick.start') })).toBeEnabled();
     });
-  },
-  'close-day': async (s, opts) => {
+  }),
+  'close-day': journey({ id: 'close-day', feature: 'close-day', proves: ['cd-question', 'cd-never-verdict', 'cd-answer', 'cd-lines', 'cd-close', 'cd-persist'], strings: ['closed.eyebrow', 'closed.done'] }, async (s, opts) => {
     const p = s.page;
     await throughToPick(s, opts); await startBlock(s);
     await p.clock.runFor('02:00:01');
@@ -525,8 +529,8 @@ const J = {
     });
     const d = (await s.store()).days.at(-1);
     if (!d.closed || d.didIt !== true || d.doneText !== 'Ask for the raise' || d.block?.endReason !== 'complete') throw new Error('closed day stored wrong: ' + JSON.stringify(d));
-  },
-  'start-over-confirm': async (s) => { // Start today over asks once inline; Keep today changes nothing
+  }),
+  'start-over-confirm': journey({ id: 'start-over-confirm', feature: 'close-day', proves: ['cd-start-over'], strings: ['closed.done', 'closed.overGroup', 'closed.keep', 'closed.overYes'] }, async (s) => { // Start today over asks once inline; Keep today changes nothing
     const p = s.page;
     await J['close-day'](s);
     const closedHeading = t('closed.done');
@@ -551,8 +555,8 @@ const J = {
     await expect.poll(async () => (await s.store()).days.at(-1).items.length).toBe(0);
     const d = (await s.store()).days.at(-1);
     if (d.closed || d.date !== kept.date) throw new Error('start over did not reset today: ' + JSON.stringify(d));
-  },
-  'returning-late': async (s) => { // day 1 morning real ritual, day 2 opened at 14:00
+  }),
+  'returning-late': journey({ id: 'returning-late', feature: 'returning-user', proves: ['ru-late', 'ru-step0', 'ru-leftovers'], strings: ['block.end', 'bad.hero', 'bad.late', 'name.placeholderNew'] }, async (s) => { // day 1 morning real ritual, day 2 opened at 14:00
     const p = s.page;
     await throughToPick(s); await startBlock(s);
     await p.getByRole('button', { name: t('block.end') }).click();
@@ -572,8 +576,8 @@ const J = {
       await expect(p.getByRole('button', { name: /Ask for the raise.*risky · pushed 1×/ })).toBeVisible();
       await expect(p.getByRole('textbox', { name: PUSHED_Q })).toHaveAttribute('placeholder', t('name.placeholderNew'));
     });
-  },
-  'missed-days': async (s) => { // ritual Mon, empty peek Tue, back Thu 08:00
+  }),
+  'missed-days': journey({ id: 'missed-days', feature: 'returning-user', proves: ['ru-missed'], strings: ['bad.hero', 'bad.missed'] }, async (s) => { // ritual Mon, empty peek Tue, back Thu 08:00
     const p = s.page;
     await throughToPick(s);
     await p.clock.setSystemTime(new Date('2026-10-13T08:00:00')); await p.reload();
@@ -585,8 +589,8 @@ const J = {
       await expectFraming(p, false); // bad only because of missed days: still a morning
     });
     await s.step('mon-leftovers', async () => { await p.getByRole('button', { name: READY }).click(); await expect(p.getByRole('button', { name: /Ask for the raise/ })).toBeVisible(); });
-  },
-  'welcome-hour-line': async (s) => { // a returning user on a normal morning sees the hour-before line too
+  }),
+  'welcome-hour-line': journey({ id: 'welcome-hour-line', feature: 'returning-user', proves: ['ru-morning-line'], strings: ['morning.hero', 'morning.email'] }, async (s) => { // a returning user on a normal morning sees the hour-before line too
     const p = s.page;
     await throughToPick(s);
     await p.clock.setSystemTime(new Date('2026-10-15T08:00:00')); await p.reload();
@@ -596,8 +600,8 @@ const J = {
       await expect(p.getByText('Pen and paper', { exact: false })).toHaveCount(0);
       await expectFraming(p, false);
     });
-  },
-  'copy-from-the-talk': async (s) => { // the talk's own words on Name, Ask, Pick, Nothing got a yes and About; Close quotes nothing
+  }),
+  'copy-from-the-talk': journey({ id: 'copy-from-the-talk', feature: 'pick-and-start', proves: ['ps-talk-copy'], strings: ['name.risky.hint', 'twoQuestions', 'ask.satisfied', 'ask.leverage', 'none.hero', 'cite.tim', 'none.again', 'pick.hero', 'pick.ten', 'about.busy'] }, async (s) => { // the talk's own words on Name, Ask, Pick, Nothing got a yes and About; Close quotes nothing
     const p = s.page;
     await p.getByRole('button', { name: READY }).click();
     await p.getByRole('button', { name: SKIP }).click();
@@ -637,16 +641,16 @@ const J = {
       await expect(quote(p, GUISE)).toContainText(t('cite.tim'));
       await expect(p.getByText('No streaks', { exact: false })).toHaveCount(0);
     });
-  },
-  'midnight-rollover': async (s) => { // a closed day left open past midnight moves to the new day
+  }),
+  'midnight-rollover': journey({ id: 'midnight-rollover', feature: 'returning-user', proves: ['ru-midnight'], strings: ['block.end', 'closed.eyebrow'] }, async (s) => { // a closed day left open past midnight moves to the new day
     const p = s.page;
     await throughToPick(s); await startBlock(s); await p.getByRole('button', { name: t('block.end') }).click();
     await expectClose(p); await answer(p, false, NOTE.no, null); await closeToday(p, false);
     await p.clock.runFor('02:00:00'); // 23:30 -> 01:30 next day, app left open
     await p.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
     await s.step('after-midnight', async () => { await expect(p.getByText(t('closed.eyebrow'))).toHaveCount(0); });
-  },
-  'block-across-midnight': async (s) => { // a block belongs to the day it started; closing it moves to the new day
+  }),
+  'block-across-midnight': journey({ id: 'block-across-midnight', feature: 'block-timer', proves: ['bt-midnight'], strings: ['morning.hero', 'closed.eyebrow'] }, async (s) => { // a block belongs to the day it started; closing it moves to the new day
     const p = s.page;
     await throughToPick(s); await startBlock(s);
     await p.clock.runFor('01:00:00'); // 23:30 -> 00:30 next day, app left open
@@ -667,8 +671,8 @@ const J = {
     const st = await s.store(); const d14 = st.days.find((d) => d.date === '2026-10-14');
     if (!d14?.closed || d14.didIt !== true || d14.doneText !== 'Ask for the raise') throw new Error('2026-10-14 not closed as done: ' + JSON.stringify(d14));
     if (!st.days.some((d) => d.date === '2026-10-15')) throw new Error('no 2026-10-15 record: ' + JSON.stringify(st.days.map((d) => d.date)));
-  },
-  'block-reload-after-midnight': async (s) => { // a block started before midnight is offered back after a reload
+  }),
+  'block-reload-after-midnight': journey({ id: 'block-reload-after-midnight', feature: 'block-timer', proves: ['bt-midnight', 'ru-carried'], strings: [] }, async (s) => { // a block started before midnight is offered back after a reload
     const p = s.page;
     await throughToPick(s); await startBlock(s);
     await p.clock.setSystemTime(new Date('2026-10-15T00:10:00')); await p.reload();
@@ -678,8 +682,8 @@ const J = {
     });
     await p.clock.setSystemTime(new Date('2026-10-15T02:00:00')); await p.reload();
     await s.step('reload-0200', async () => { await expectClose(p); });
-  },
-  'close-not-today-count': async (s) => { // the first-ever Not today has no count line; a later Not today shows what is already done
+  }),
+  'close-not-today-count': journey({ id: 'close-not-today-count', feature: 'close-day', proves: ['cd-count-now', 'cd-no-streaks', 'cd-lines'], strings: ['block.end', 'closed.noStreaks'] }, async (s) => { // the first-ever Not today has no count line; a later Not today shows what is already done
     const p = s.page;
     await throughToPick(s); await startBlock(s);
     await p.clock.runFor('20:00');
@@ -699,8 +703,8 @@ const J = {
     const st = await s.store();
     const got = st.days.map((d) => [d.date, d.didIt, d.doneText]);
     if (JSON.stringify(got) !== JSON.stringify([['2026-10-14', true, 'Ask for the raise'], ['2026-10-15', false, null]])) throw new Error('days stored wrong: ' + JSON.stringify(got));
-  },
-  'count-grows': async (s) => { // Yes, Not today, Yes, Yes: the count only goes up; history lists only the done days, then a new month moves them to Earlier
+  }),
+  'count-grows': journey({ id: 'count-grows', feature: 'history', proves: ['hi-list', 'hi-month', 'hi-earlier'], strings: ['block.end', 'yourDays'] }, async (s) => { // Yes, Not today, Yes, Yes: the count only goes up; history lists only the done days, then a new month moves them to Earlier
     const p = s.page;
     await ritualDay(s, { item: 'Ask for the raise', yes: true, note: NOTE.first, line: FIRST_DAY });
     await newDayAt(p, '2026-10-15T07:30:00');
@@ -729,8 +733,8 @@ const J = {
       await expectHistory(p, { total: 3, earlier: [['October', '3 days']], absent: ['Sat 17', 'Wed 14'] });
       await expect(p.getByText(/^November/)).toHaveCount(0); // no month block for a month with nothing done
     });
-  },
-  'history-empty': async (s) => { // a brand-new profile: the empty state, no zero anywhere
+  }),
+  'history-empty': journey({ id: 'history-empty', feature: 'history', proves: ['hi-empty'], strings: ['yourDays', 'days.empty'] }, async (s) => { // a brand-new profile: the empty state, no zero anywhere
     const p = s.page;
     await s.step('about', async () => {
       await p.getByRole('button', { name: ABOUT }).click();
@@ -751,8 +755,8 @@ const J = {
     });
     await s.step('back-to-about', async () => { await p.getByRole('button', { name: BACK }).click(); await expect(h1(p)).toHaveText(ABOUT); });
     await s.step('done-to-welcome', async () => { await p.getByRole('button', { name: DONE }).click(); await expect(h1(p)).toHaveText(FIRST_H1); });
-  },
-  'history-from-close-and-about': async (s) => { // the first Yes ever shows no number; both ways in to Your days; Done and Back return to where you came from, one step at a time
+  }),
+  'history-from-close-and-about': journey({ id: 'history-from-close-and-about', feature: 'history', proves: ['hi-entries', 'hi-back', 'hi-now'], strings: ['block.end', 'close.hero', 'closed.done', 'yourDays'] }, async (s) => { // the first Yes ever shows no number; both ways in to Your days; Done and Back return to where you came from, one step at a time
     const p = s.page;
     const one = { total: 1, month: 'October', rows: [['Wed 14', 'Ask for the raise']] };
     await throughToPick(s); await startBlock(s);
@@ -779,8 +783,8 @@ const J = {
       await expect(h1(p)).toHaveText(ABOUT);
     });
     await s.step('done-to-closed-again', async () => { await p.getByRole('button', { name: DONE }).click(); await expect(h1(p)).toHaveText(t('closed.done')); });
-  },
-  'step0-bring-in': async (s) => { // yesterday's open items are offered on step 1, nothing pre-selected; only what is tapped comes along
+  }),
+  'step0-bring-in': journey({ id: 'step0-bring-in', feature: 'returning-user', proves: ['ru-step0'], strings: ['block.end', 'name.placeholderNew', 'name.risky'] }, async (s) => { // yesterday's open items are offered on step 1, nothing pre-selected; only what is tapped comes along
     const p = s.page;
     await throughToPick(s, { pushed: ['Tax letter'], risky: ['Ask for the raise'], anxious: ['Email the school'], answers: [[true, false], [true, true], [false, true]] });
     await startBlock(s);
@@ -823,8 +827,8 @@ const J = {
     });
     await expect.poll(async () => (await s.store()).days.find((d) => d.date === '2026-10-15')?.items.map((i) => [i.text, i.pushedCount]))
       .toEqual([['Tax letter', 1]]);
-  },
-  'start-over-count': async (s) => { // Start today over takes back only today's own Yes; earlier days stay counted and listed
+  }),
+  'start-over-count': journey({ id: 'start-over-count', feature: 'close-day', proves: ['cd-start-over'], strings: ['closed.overGroup', 'closed.overYes', 'morning.hero', 'yourDays'] }, async (s) => { // Start today over takes back only today's own Yes; earlier days stay counted and listed
     const p = s.page;
     await ritualDay(s, { item: 'Ask for the raise', yes: true, note: NOTE.first, line: FIRST_DAY });
     await newDayAt(p, '2026-10-15T07:30:00');
@@ -846,8 +850,8 @@ const J = {
     const d14 = st.days.find((d) => d.date === '2026-10-14'), d15 = st.days.find((d) => d.date === '2026-10-15');
     if (d14?.didIt !== true || !d14.closed || d14.doneText !== 'Ask for the raise') throw new Error('earlier day touched: ' + JSON.stringify(d14));
     if (!d15 || d15.didIt !== null || d15.closed || d15.items.length || d15.doneText !== null) throw new Error('today not reset: ' + JSON.stringify(d15));
-  },
-  'migrate-v2': async (s) => { // the one seeded journey: an old v2 store becomes v3 on first load (see CONTEXT and e2e/README.md)
+  }),
+  'migrate-v2': journey({ id: 'migrate-v2', feature: 'history', proves: [], strings: ['morning.hero', 'yourDays'] }, async (s) => { // the one seeded journey: an old v2 store becomes v3 on first load (see CONTEXT and e2e/README.md)
     const p = s.page;
     await s.step('welcome-returning', async () => { await expect(h1(p)).toHaveText(t('morning.hero')); });
     await s.step('about-count', async () => {
@@ -870,8 +874,8 @@ const J = {
     const want = [['2026-10-12', true, true, 'Ask for the raise', [['Ask for the raise', ['risky'], false]]], ['2026-10-13', false, null, null, [['Call the landlord', ['risky'], false]]]];
     if (JSON.stringify(got?.slice(0, 2)) !== JSON.stringify(want)) throw new Error('v3 not migrated: ' + JSON.stringify(got));
     if (JSON.stringify(v2) !== V2_SEED) throw new Error('v2 key changed or gone: ' + JSON.stringify(v2));
-  },
-  'two-tabs': async (s) => { // tab B opened first and left stale; tab A finishes the day; B's save must not undo it, and B's focus shows it
+  }),
+  'two-tabs': journey({ id: 'two-tabs', feature: 'history', proves: ['hi-two-tabs'], strings: ['closed.done'] }, async (s) => { // tab B opened first and left stale; tab A finishes the day; B's save must not undo it, and B's focus shows it
     const B = s.page;
     await s.step('tab-b-open', async () => { await expect(h1(B)).toHaveText(FIRST_H1); });
     const A = await s.context.newPage(); await A.goto(URL);
@@ -893,8 +897,8 @@ const J = {
     await s.step('tab-b-history', async () => { await SEE_DAYS(B).click(); await expectHistory(B, { total: 1, month: 'October', rows: [['Wed 14', 'Ask for the raise']] }); });
     const d = done14(await s.store());
     if (d?.didIt !== true || !d.closed || d.items.some((i) => i.text === 'Call mom')) throw new Error('tab A day lost: ' + JSON.stringify(d));
-  },
-  'reminder-honest-granted': async (s) => { // context grants notifications; Chromium has no TimestampTrigger, so open-only copy
+  }),
+  'reminder-honest-granted': journey({ id: 'reminder-honest-granted', feature: 'reminder', proves: ['rm-status', 'rm-set', 'rm-off'], strings: ['reminder.allowed', 'about.time'] }, async (s) => { // context grants notifications; Chromium has no TimestampTrigger, so open-only copy
     const p = s.page;
     const status = p.getByRole('status');
     await s.step('about', async () => {
@@ -915,8 +919,8 @@ const J = {
       await expect(p.getByLabel(t('about.time'))).toHaveValue('');
     });
     await expect.poll(async () => (await s.store())?.reminder).toBeNull();
-  },
-  'reminder-honest-denied': async (s) => { // headless-shell Chromium starts with notifications 'denied' (no prompt): the blocked state
+  }),
+  'reminder-honest-denied': journey({ id: 'reminder-honest-denied', feature: 'reminder', proves: ['rm-status', 'rm-denied'], strings: ['reminder.denied', 'about.time'] }, async (s) => { // headless-shell Chromium starts with notifications 'denied' (no prompt): the blocked state
     const p = s.page;
     const status = p.getByRole('status');
     const perm = () => p.evaluate(async () => ({ notification: Notification.permission, query: (await navigator.permissions.query({ name: 'notifications' })).state }));
@@ -937,7 +941,7 @@ const J = {
     }
     const st = await s.store();
     if (st?.reminder != null) throw new Error('denied permission still saved a reminder: ' + JSON.stringify(st.reminder));
-  },
+  }),
 };
 
 // ---------- analytics: anonymous counts, never item text ----------
@@ -967,7 +971,7 @@ async function expectPrivacyNote(p) {
   await p.getByRole('button', { name: DONE }).click();
 }
 const analyticsJourneys = {
-  'analytics-anonymous-counts': async (s) => { // started, finished and opened_history each go out once, as a bare name; no item text anywhere
+  'analytics-anonymous-counts': journey({ id: 'analytics-anonymous-counts', feature: 'analytics', proves: ['an-started', 'an-finished', 'an-history', 'an-once-a-day', 'an-privacy-note', 'an-no-script'], strings: ['yourDays'] }, async (s) => { // started, finished and opened_history each go out once, as a bare name; no item text anywhere
     const p = s.page;
     await s.step('privacy-note', async () => { await expectPrivacyNote(p); });
     // no token in a local build: no third-party script. The live site is behind Cloudflare, which may inject its own beacon, so only check locally.
@@ -989,8 +993,8 @@ const analyticsJourneys = {
     if (st !== 'one-thing:events,one-thing:v3') throw new Error('storage keys: ' + st);
     const rec = JSON.parse(await p.evaluate(() => localStorage.getItem('one-thing:events')));
     if (ITEMS.test(JSON.stringify(rec))) throw new Error('events record holds item text');
-  },
-  'social-preview': async (s) => { // the share tags are absolute, and the 1200x630 image is served as a PNG
+  }),
+  'social-preview': journey({ id: 'social-preview', feature: 'analytics', proves: ['an-share', 'an-privacy-note'], strings: [] }, async (s) => { // the share tags are absolute, and the 1200x630 image is served as a PNG
     const p = s.page;
     const meta = async (attr, name) => p.locator(`meta[${attr}="${name}"]`).getAttribute('content');
     await s.step('tags', async () => {
@@ -1016,8 +1020,8 @@ const analyticsJourneys = {
       if (crypto.createHash('sha256').update(b).digest('hex') !== want) throw new Error('served og-image.png differs from public/og-image.png');
     });
     await s.step('about-privacy', async () => { await expectPrivacyNote(p); });
-  },
-  'analytics-do-not-track': async (s) => { // the browser says Do Not Track: no event leaves, and nothing is remembered about it
+  }),
+  'analytics-do-not-track': journey({ id: 'analytics-do-not-track', feature: 'analytics', proves: ['an-dnt'], strings: [] }, async (s) => { // the browser says Do Not Track: no event leaves, and nothing is remembered about it
     const p = s.page;
     if (await p.evaluate(() => navigator.doNotTrack) !== '1') throw new Error('the Do Not Track signal is not set');
     await ritualDay(s, { yes: true, note: NOTE.first, line: FIRST_DAY });
@@ -1025,16 +1029,16 @@ const analyticsJourneys = {
     await p.waitForTimeout(300);
     if (NET.events.length || NET.all.some((r) => /api\/event/.test(r.url))) throw new Error('sent despite Do Not Track: ' + JSON.stringify(NET.events));
     if ((await s.store()).days[0].didIt !== true) throw new Error('the day did not count');
-  },
-  'analytics-blocked': async (s) => { // /api/event and the Cloudflare script are blocked (an ad blocker): the whole day still works
+  }),
+  'analytics-blocked': journey({ id: 'analytics-blocked', feature: 'analytics', proves: ['an-silent'], strings: [] }, async (s) => { // /api/event and the Cloudflare script are blocked (an ad blocker): the whole day still works
     const p = s.page;
     await ritualDay(s, { yes: true, note: NOTE.first, line: FIRST_DAY });
     await s.step('open-history', async () => { await SEE_DAYS(p).click(); await expectHistory(p, { total: 1, month: 'October', rows: [['Wed 14', 'Ask for the raise']] }); });
     await p.waitForTimeout(300);
     noPageErrors(s);
     expectNoItemText();
-  },
-  'analytics-offline': async (s) => { // the network drops right after load: counts fail silently, the app is unaffected
+  }),
+  'analytics-offline': journey({ id: 'analytics-offline', feature: 'analytics', proves: ['an-silent'], strings: [] }, async (s) => { // the network drops right after load: counts fail silently, the app is unaffected
     const p = s.page;
     await p.evaluate(() => navigator.serviceWorker.ready.then(() => 1)); // let the service worker finish registering first; going offline mid-registration is a page error on newer Playwright
     await s.context.setOffline(true);
@@ -1043,7 +1047,7 @@ const analyticsJourneys = {
     await p.waitForTimeout(300);
     noPageErrors(s);
     if ((await s.store()).days[0].doneText !== 'Ask for the raise') throw new Error('the day did not save offline');
-  },
+  }),
 };
 Object.assign(J, analyticsJourneys);
 
@@ -1097,7 +1101,7 @@ async function waitForOfflineReady(p) {
   await expect.poll(() => p.evaluate(() => !!navigator.serviceWorker.controller)).toBe(true);
 }
 const readinessJourneys = {
-  'offline-reload': async (s) => { // real service worker: after one online visit the whole app works with the network off, and a block survives an offline reload
+  'offline-reload': journey({ id: 'offline-reload', feature: 'resilience', proves: ['rs-offline'], strings: ['closed.eyebrow'] }, async (s) => { // real service worker: after one online visit the whole app works with the network off, and a block survives an offline reload
     const p = s.page;
     await s.step('online-visit', async () => { await waitForOfflineReady(p); });
     await s.context.setOffline(true);
@@ -1108,8 +1112,8 @@ const readinessJourneys = {
     await s.step('close-offline', async () => { await expectClose(p); await answer(p, true, NOTE.first, FIRST_DAY); await closeToday(p, true); });
     await s.step('closed-survives-offline-reload', async () => { await p.reload(); await expect(p.getByText(t('closed.eyebrow'))).toBeVisible(); });
     const st = await s.store(); if (st?.days?.[0]?.didIt !== true) throw new Error('the offline day did not save');
-  },
-  'small-phone-layout': async (s) => { // 375x667 (iPhone SE class, touch): a whole day with no sideways scroll, the key action reachable on every screen
+  }),
+  'small-phone-layout': journey({ id: 'small-phone-layout', feature: 'resilience', proves: ['rs-small-phone'], strings: [] }, async (s) => { // 375x667 (iPhone SE class, touch): a whole day with no sideways scroll, the key action reachable on every screen
     const p = s.page; const at = async (label) => { const bad = await layoutProblems(p); if (bad.length) throw new Error(`layout problems on ${label}: ${bad.join(' | ')}`); };
     await at('welcome');
     await throughToPick(s, { risky: ['Prepare the quarterly numbers for the investor update and send them to everyone on the list'], anxious: ['Tax letter'] });
@@ -1117,8 +1121,8 @@ const readinessJourneys = {
     await at('block'); await p.clock.runFor('02:00:01');
     await s.step('close', async () => { await at('close'); await YES(p).click(); await at('close-yes'); await expect(CLOSE_TODAY(p)).toBeEnabled(); await CLOSE_TODAY(p).scrollIntoViewIfNeeded(); await CLOSE_TODAY(p).click(); });
     await s.step('closed-days-about', async () => { await at('closed'); await SEE_DAYS(p).click(); await at('days'); await p.getByRole('button', { name: DONE }).click(); await p.getByRole('button', { name: ABOUT }).click(); await at('about'); });
-  },
-  'long-url-widths': async (s) => { // a pasted URL (55+ chars, no break opportunity) as an item on every screen that shows item text, at 320, 375, 390 and 430 wide: it wraps, nothing is clipped, nothing scrolls sideways
+  }),
+  'long-url-widths': journey({ id: 'long-url-widths', feature: 'resilience', proves: ['rs-long-text'], strings: ['twoQuestions', 'pick.start'] }, async (s) => { // a pasted URL (55+ chars, no break opportunity) as an item on every screen that shows item text, at 320, 375, 390 and 430 wide: it wraps, nothing is clipped, nothing scrolls sideways
     const p = s.page; const problems = [];
     const U1 = 'https://example.com/investors/q3-update-deck-final-v2-FINAL-reviewed-by-legal';
     const U2 = 'https://docs.example.org/shared/folder/tax-letter-response-2026-10-draft3';
@@ -1143,8 +1147,8 @@ const readinessJourneys = {
     await p.getByRole('button', { name: /tax-letter-response/ }).click(); await at('bring-in-picked');
     await p.getByRole('button', { name: NEXT }).click(); await p.getByRole('button', { name: NEXT }).click(); await p.getByRole('button', { name: t('twoQuestions') }).click(); await at('ask-day2');
     if (problems.length) throw new Error(`${problems.length} layout problems on ${[...new Set(problems.map((x) => x.split(' ')[0]))].join(', ')}: ` + problems.slice(0, 6).join(' | '));
-  },
-  'contrast-aa': async (s) => { // every screen of a day, light and dark: all text meets WCAG AA (4.5:1; 3:1 for large text), so the muted grey cannot slip back under
+  }),
+  'contrast-aa': journey({ id: 'contrast-aa', feature: 'resilience', proves: ['rs-contrast'], strings: ['twoQuestions', 'pick.start', 'block.stepAway', 'block.back', 'block.end'] }, async (s) => { // every screen of a day, light and dark: all text meets WCAG AA (4.5:1; 3:1 for large text), so the muted grey cannot slip back under
     const p = s.page; const fails = [];
     const at = async (label) => {
       for (const scheme of ['light', 'dark']) { await p.emulateMedia({ colorScheme: scheme }); for (const f of await contrastFailures(p)) fails.push(`${label} (${scheme}): ${f}`); }
@@ -1163,8 +1167,8 @@ const readinessJourneys = {
     await p.getByRole('button', { name: ABOUT }).click(); await at('about'); await p.getByRole('button', { name: BACK }).click().catch(() => {});
     await newDayAt(p, '2026-10-15T07:15:00'); await p.getByRole('button', { name: READY }).click(); await at('bring-in');
     if (fails.length) throw new Error(`${fails.length} contrast failures: ` + fails.slice(0, 8).join(' | '));
-  },
-  'reload-mid-naming': async (s) => { // the app has no step memory: a reload during naming returns to Welcome, and the items already added are still there (a typed, unadded draft is lost)
+  }),
+  'reload-mid-naming': journey({ id: 'reload-mid-naming', feature: 'resilience', proves: ['rs-reload-mid-naming'], strings: [] }, async (s) => { // the app has no step memory: a reload during naming returns to Welcome, and the items already added are still there (a typed, unadded draft is lost)
     const p = s.page;
     await s.step('ready', async () => { await p.getByRole('button', { name: READY }).click(); });
     await s.step('two-steps', async () => { await addItem(p, 'Talking to leads'); await p.getByRole('button', { name: NEXT }).click(); await p.getByRole('textbox').fill('typed but not added'); });
@@ -1173,16 +1177,16 @@ const readinessJourneys = {
       await p.getByRole('button', { name: READY }).click(); await expect(h1(p)).toHaveText(PUSHED_Q);
       await expect(row(p, 'Talking to leads')).toBeVisible(); await expect(p.getByText('typed but not added')).toHaveCount(0);
     });
-  },
-  'storage-blocked': async (s) => { // storage refuses writes (private mode, full disk): a visible note, nothing crashes, the day can still be worked in memory
+  }),
+  'storage-blocked': journey({ id: 'storage-blocked', feature: 'resilience', proves: ['rs-storage-blocked'], strings: ['saveNote', 'twoQuestions'] }, async (s) => { // storage refuses writes (private mode, full disk): a visible note, nothing crashes, the day can still be worked in memory
     const p = s.page;
     await s.step('ready', async () => { await p.getByRole('button', { name: READY }).click(); await addItem(p, 'Ask for the raise'); });
     await s.step('note', async () => { await expect(p.getByText(t('saveNote'))).toBeVisible(); });
     await p.getByRole('button', { name: NEXT }).click(); await p.getByRole('button', { name: NEXT }).click(); await p.getByRole('button', { name: t('twoQuestions') }).click();
     await answerAll(p, [[true, true]]); await startBlock(s, 'Ask for the raise');
     noPageErrors(s);
-  },
-  'no-notification-api': async (s) => { // iPhone Safari outside the home-screen app has no Notification API: About says so, offers no time input, nothing throws
+  }),
+  'no-notification-api': journey({ id: 'no-notification-api', feature: 'resilience', proves: ['rs-no-notification'], strings: ['reminder.unsupported', 'about.time'] }, async (s) => { // iPhone Safari outside the home-screen app has no Notification API: About says so, offers no time input, nothing throws
     const p = s.page;
     await s.step('about', async () => {
       await p.getByRole('button', { name: ABOUT }).click();
@@ -1190,8 +1194,8 @@ const readinessJourneys = {
       await expect(p.getByLabel(t('about.time'))).toHaveCount(0);
     });
     noPageErrors(s);
-  },
-  'hostile-text': async (s) => { // items are plain text whatever is typed: markup is shown literally, nothing runs, blanks cannot be added
+  }),
+  'hostile-text': journey({ id: 'hostile-text', feature: 'resilience', proves: ['rs-hostile-text'], strings: [] }, async (s) => { // items are plain text whatever is typed: markup is shown literally, nothing runs, blanks cannot be added
     const p = s.page; let dialog = false; p.on('dialog', (d) => { dialog = true; d.dismiss(); });
     const evil = '<img src=x onerror=alert(1)> & "quotes" \u{1F525} \u65E5\u672C\u8A9E';
     await s.step('ready', async () => { await p.getByRole('button', { name: READY }).click(); await addItem(p, evil); });
@@ -1199,7 +1203,7 @@ const readinessJourneys = {
     if (dialog) throw new Error('script in an item ran'); if (await p.locator('main img').count()) throw new Error('markup in an item was rendered');
     const st = await s.store(); if (st.days.at(-1).items[0].text !== evil) throw new Error('stored text changed: ' + st.days.at(-1).items[0].text);
     noPageErrors(s);
-  },
+  }),
 };
 Object.assign(J, readinessJourneys);
 // ---- first-visit welcome, focus after navigation, and copy review ----
@@ -1211,7 +1215,7 @@ async function expectFocusOnHeading(p, text, label) {
 }
 const noEmDash = (p, label) => expect(p.locator('body'), `em dash on ${label}`).not.toContainText(/\u2014/);
 const reviewJourneys = {
-  'welcome-v1': async (s) => { // the first-visit welcome fits every phone width, reads in both colour schemes, and Start/Back/About work; a returning morning still gets the old welcome
+  'welcome-v1': journey({ id: 'welcome-v1', feature: 'first-visit', proves: ['fv-fits', 'fv-back'], strings: ['first.start', 'morning.hero', 'welcome.ready'] }, async (s) => { // the first-visit welcome fits every phone width, reads in both colour schemes, and Start/Back/About work; a returning morning still gets the old welcome
     const p = s.page; const problems = [];
     await s.step('welcome', async () => { await expectFirstWelcome(p); });
     // width x height of real phones: Start, the hour line and the assurance must all end inside the screen (no scroll) from 320x640 up
@@ -1233,8 +1237,8 @@ const reviewJourneys = {
     await YES(p).click(); await CLOSE_TODAY(p).click();
     await newDayAt(p, '2026-10-15T08:00:00');
     await s.step('returning-welcome', async () => { await expect(h1(p)).toHaveText(t('morning.hero')); await expect(p.getByRole('button', { name: t('welcome.ready') })).toBeVisible(); await expect(p.getByRole('button', { name: t('first.start'), exact: true })).toHaveCount(0); await expect(p.getByRole('listitem')).toHaveCount(0); });
-  },
-  'focus-after-nav': async (s) => { // after every screen change focus is on the new heading (the input on the name steps), so a keyboard user can type and press Enter at once
+  }),
+  'focus-after-nav': journey({ id: 'focus-after-nav', feature: 'resilience', proves: [], strings: ['first.start', 'name.risky', 'name.anxious', 'twoQuestions', 'pick.hero', 'pick.start', 'block.end', 'close.hero', 'closed.done', 'close.today', 'seeDays'] }, async (s) => { // after every screen change focus is on the new heading (the input on the name steps), so a keyboard user can type and press Enter at once
     const p = s.page; const A = (n) => p.getByRole('button', { name: n, exact: true });
     await s.step('welcome', async () => { await expectFirstWelcome(p); });
     await A(t('first.start')).focus(); await p.keyboard.press('Enter');
@@ -1266,8 +1270,8 @@ const reviewJourneys = {
     await p.getByRole('button', { name: DONE }).click();
     // a plain page load does not grab focus
     await p.reload(); const f = await focused(p); if (f.tag !== 'BODY') throw new Error('page load moved focus: ' + JSON.stringify(f));
-  },
-  'review-copy': async (s) => { // block length, the pause line, name-step hints, About (eight steps to three, not affiliated, one talk link, four privacy lines); no em dash anywhere
+  }),
+  'review-copy': journey({ id: 'review-copy', feature: 'pick-and-start', proves: ['ps-block-copy', 'an-privacy-note'], strings: ['block.pauseHint', 'first.step1.d', 'first.start', 'name.anxious.hint', 'twoQuestions', 'pick.small', 'block.focus', 'block.stepAway', 'block.back', 'block.pauseUsed', 'block.end', 'about.independent', 'about.free'] }, async (s) => { // block length, the pause line, name-step hints, About (eight steps to three, not affiliated, one talk link, four privacy lines); no em dash anywhere
     const p = s.page; const SPAUSE = t('block.pauseHint');
     await s.step('welcome', async () => { await noEmDash(p, 'welcome'); await expect(p.getByText(t('first.step1.d'))).toBeVisible(); await p.getByRole('button', { name: t('first.start'), exact: true }).click(); });
     await s.step('name-1', async () => { await noEmDash(p, 'name 1'); await expect(p.getByRole('img', { name: fmt.steps(1, 3) })).toBeVisible(); await addItem(p, 'Ask for the raise'); await p.getByRole('button', { name: NEXT }).click(); await p.getByRole('button', { name: NEXT }).click(); });
@@ -1305,7 +1309,7 @@ const reviewJourneys = {
       await expect(p.getByText(t('about.free'), { exact: true })).toBeVisible();
       const order = await p.locator('#privacy p').allTextContents(); if (JSON.stringify(order) !== JSON.stringify(PRIVACY)) throw new Error('privacy lines out of order: ' + JSON.stringify(order));
     });
-  },
+  }),
 };
 Object.assign(J, reviewJourneys);
 

@@ -49,7 +49,7 @@ Stable handles from `src/App.tsx`:
 
 Per-journey context options (for example notification `permissions`, the `migrate-v2` `seed`, a `viewport` with `mobile: true` for touch emulation, or a `before(context)` hook for init scripts and network rules) go in `CONTEXT` in `e2e/drive.mjs`. The default is no grants and no seed. The clock belongs to the context, so a second tab (`s.context.newPage()`, as in `two-tabs`) shares it; set `s.page` to the tab being driven and the evidence follows it.
 
-To add a journey, add an entry to `J` (and `START` if it needs a different start time) in `e2e/drive.mjs`. Reuse `throughToPick` and `startBlock`, and wrap each user action in `s.step(label, fn)` so it leaves evidence.
+To add a journey, add an entry to `J` (and `START` if it needs a different start time) in `e2e/drive.mjs`, wrapped as `'name': journey({ id: 'name', feature, proves, strings }, async (s) => { ... })` (see the comment above `J`), and list it with a "Run `vdt journey name`" line in the one map its `feature` names. Reuse `throughToPick` and `startBlock`, and wrap each user action in `s.step(label, fn)` so it leaves evidence.
 
 ### Running against the live site, and long runs
 
@@ -82,4 +82,4 @@ This kills only the process group in `$TMPDIR/vdt-$PORT.pid` (never by name) and
 - `e2e/run.mjs`: the parallel runner behind `npm run journeys`, `journeys:fast` and `check:full`.
 - `e2e/drive.mjs`: the journeys, run by `vdt journey`. Run it with `node` directly only if `VDT_URL` is set.
 
-Feature recipes and what each proves: [features/README.md](features/README.md). Keep the map in sync when journeys change.
+Feature recipes and what each proves: [features/README.md](features/README.md). `npm run check:maps` (part of `npm run check:fast`) fails when the maps and the journeys' meta disagree, and says how to fix it.
