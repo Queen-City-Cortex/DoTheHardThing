@@ -120,6 +120,13 @@ The app depends on the device's local clock: a day is the local calendar date, a
 
 The client sends at most three events (`started`, `finished`, `opened_history`), once per browser per day, as `POST /api/event` with `{"event":"<name>"}`. Nothing is sent in development or when the browser signals Do Not Track or Global Privacy Control. The Worker allow-lists the name and writes a data point to Workers Analytics Engine containing the event name and the country code from Cloudflare's request metadata. It does not store IP addresses or user agents. See the Analytics section of the [README](../README.md).
 
+## Hosting
+
+What the hosting config promises, and the check that holds it:
+
+- **Theme color.** The light `<meta name="theme-color">` in `index.html` (`#f4f3ef`, the paper) owns the color of the installed app's title bar and splash. `vite.config.ts` repeats it as a literal in the manifest's `theme_color` and `background_color` (the config has no Node types to read `index.html` with), and `npm run check:dist` fails when either, or the light `--paper` in the built CSS, differs from the meta tag. The dark meta tag (`#15181d`) has no manifest counterpart: a manifest holds one color. The icons keep their charcoal (`#1f2329`, the ink color) background.
+- **Live checks of this build.** `npm run verify:live` compares the live `manifest.webmanifest` with `dist/`'s. Like every check of this build's files it is a FAIL only when the live entry script equals `dist/index.html`'s (the live site serves this build); before the deploy it prints `PENDING`, which never fails the run on its own (the entry script check still does). `scripts/verify-live.test.mjs` runs it against a local fake site.
+
 ## Deploy
 
 `npm run build` writes `dist/`. `npx wrangler deploy` uploads `dist/` as static assets and deploys the Worker. See the README for what a fork must change.

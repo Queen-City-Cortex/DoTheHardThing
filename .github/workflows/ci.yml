@@ -95,5 +95,5 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       - name: Verify the live site
         # Read-only (GET only, no POST to /api/event): the page is 200 and serves this build's entry script, GET /api/event
-        # answers 405 from the Worker, og-image.png and sw.js equal this build's. Retries while the edge catches up.
+        # answers 405 from the Worker, og-image.png, sw.js and the manifest equal this build's. Retries while the edge catches up.
         run: npm run verify:live -- --retries 10

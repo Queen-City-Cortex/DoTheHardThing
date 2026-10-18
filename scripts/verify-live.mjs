@@ -4,7 +4,10 @@
 // Checks (FAIL exits 1): / is 200 with the root div; when dist/index.html exists, the live page serves the same hashed
 // entry script (so this is the build you just made); GET /api/event is 405 (the Worker answers, not the SPA fallback);
 // /og-image.png is image/png with the same bytes as public/og-image.png; /sw.js is served (and equals dist/sw.js when
-// dist exists). Headers on / are reported (WARN): cache-control and the security headers that are missing.
+// dist exists). Headers on / are reported (INFO): cache-control and the security headers that are missing.
+// Checks of this build's files (the manifest) need the live site to serve this build: when its entry script equals
+// dist/index.html's, a mismatch is a FAIL; when it does not yet (or there is no dist to compare), they print PENDING,
+// which never fails the run on its own (the entry script check above still does).
 // --retries N: right after a deploy the edge may still serve the old build; retry the failing round N times, 15 s apart.
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
@@ -23,7 +26,7 @@ async function get(path) { // GET only: no method parameter, so no call can POST
 }
 
 async function round() {
-  const fails = []; const warns = []; const oks = [];
+  const fails = []; const warns = []; const oks = []; const pendings = [];
   const fail = (m) => fails.push(m); const ok = (m) => oks.push(m);
 
   const home = await get('/');
@@ -32,11 +35,13 @@ async function round() {
   else if (!html.includes('<div id="root">')) fail('GET / is 200 but has no <div id="root">: not the app shell');
   else ok('GET / 200 with <div id="root">');
   const liveEntry = html.match(/assets\/index-[\w-]+\.js/)?.[0];
+  let serves = null; // true: live serves this build; false: another build; null: no dist to compare
   if (existsSync('dist/index.html')) {
     const localEntry = readFileSync('dist/index.html', 'utf8').match(/assets\/index-[\w-]+\.js/)?.[0];
     if (!localEntry) fail('dist/index.html has no assets/index-*.js entry script');
     else if (liveEntry !== localEntry) fail(`live entry ${liveEntry ?? '(none)'} != local dist ${localEntry}: the live site is not serving this build (not deployed yet, or a stale edge; retry with --retries 4)`);
     else ok(`live entry ${liveEntry} equals dist/index.html`);
+    serves = Boolean(localEntry) && liveEntry === localEntry;
   } else ok(`live entry ${liveEntry ?? '(none)'} (no local dist to compare; run npm run build first to prove which build is live)`);
 
   const api = await get('/api/event');
@@ -55,6 +60,22 @@ async function round() {
   else if (existsSync('dist/sw.js') && !sw.body.equals(readFileSync('dist/sw.js'))) fail('live sw.js differs from dist/sw.js: the precache list served is not this build\'s');
   else ok(`sw.js 200${existsSync('dist/sw.js') ? ', equal to dist/sw.js' : ''}`);
 
+  // A check of this build's files: FAIL only once the live site serves this build, PENDING before
+  const ofBuild = (what, mismatch, okMsg) => {
+    if (!mismatch) ok(okMsg);
+    else if (serves) fail(mismatch);
+    else pendings.push(`${what}: ${serves === null ? 'no local dist to compare (run npm run build first)' : 'live does not serve this build yet'}`);
+  };
+
+  const mf = await get('/manifest.webmanifest');
+  const wantMf = existsSync('dist/manifest.webmanifest') ? readFileSync('dist/manifest.webmanifest') : null;
+  const themeOf = (buf) => { try { return JSON.parse(buf.toString('utf8')).theme_color; } catch { return '(not JSON)'; } };
+  ofBuild('manifest.webmanifest',
+    !wantMf ? 'no dist/manifest.webmanifest'
+      : mf.res.status !== 200 ? `GET /manifest.webmanifest is ${mf.res.status}, want 200`
+        : !mf.body.equals(wantMf) ? `live manifest.webmanifest (theme_color ${themeOf(mf.body)}, sha ${sha(mf.body)}) != dist/manifest.webmanifest (theme_color ${themeOf(wantMf)}, sha ${sha(wantMf)}): a stale deploy` : null,
+    'manifest.webmanifest 200, equal to dist/manifest.webmanifest');
+
   const h = home.res.headers;
   const cc = h.get('cache-control');
   warns.push(`/ cache-control: ${cc ?? '(none)'}`);
@@ -63,7 +84,7 @@ async function round() {
   for (const p of present) warns.push(`/ has ${p}`);
   if (missing.length) warns.push(`/ is missing ${missing.join(', ')} (add them to the \`/\` rule in public/_headers)`);
   for (const n of ['server', 'cf-ray', 'age', 'etag']) if (h.has(n)) warns.push(`/ ${n}: ${h.get(n)}`);
-  return { fails, warns, oks, liveEntry };
+  return { fails, warns, oks, pendings, liveEntry };
 }
 
 const t0 = Date.now();
@@ -75,7 +96,9 @@ for (let attempt = 0; ; attempt++) {
   await new Promise((res) => setTimeout(res, WAIT_MS));
 }
 for (const m of r.oks) console.log(`OK    ${m}`);
+for (const m of r.pendings) console.log(`PENDING ${m}`);
 for (const m of r.warns) console.log(`INFO  ${m}`);
 for (const m of r.fails) console.log(`FAIL  ${m}`);
-console.log(`verify:live ${r.fails.length ? 'FAIL' : 'OK'} ${SITE} serves ${r.liveEntry ?? '(no entry)'} in ${Date.now() - t0} ms`);
+const pending = r.pendings.length ? ` (${r.pendings.length} pending)` : '';
+console.log(`verify:live ${r.fails.length ? 'FAIL' : 'OK'} ${SITE} serves ${r.liveEntry ?? '(no entry)'}${pending} in ${Date.now() - t0} ms`);
 process.exit(r.fails.length ? 1 : 0);

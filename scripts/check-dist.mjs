@@ -1,6 +1,6 @@
 // check:dist: run after `npm run build`. Fails when the built PWA and hosting config disagree with each other:
-// a file the page needs is missing from the service worker precache (so it fails offline), the manifest theme_color
-// differs from the page's theme-color, public/_headers does not give `/`, `/index.html` and `/sw.js` a no-cache
+// a file the page needs is missing from the service worker precache (so it fails offline), the manifest theme_color or
+// background_color, or the built CSS's light --paper, differs from the page's light theme-color (index.html owns it), public/_headers does not give `/`, `/index.html` and `/sw.js` a no-cache
 // Cache-Control, or a manifest icon is missing from dist. Every failure names the file and the fix.
 // Assumes the site is served from the root (vite `base: '/'`): references are matched as /path.
 // Usage: node scripts/check-dist.mjs [distDir]
@@ -9,13 +9,8 @@ import { join } from 'node:path';
 
 const dist = process.argv[2] ?? 'dist';
 const problems = [];
-const notes = [];
 const read = (f) => readFileSync(join(dist, f), 'utf8');
 if (!existsSync(join(dist, 'index.html'))) { console.error(`check:dist: ${dist}/index.html not found; run \`npm run build\` first`); process.exit(1); }
-
-// Owner decision pending: the manifest theme_color is the icon's dark color (#1f2329) and the page's light theme-color is
-// the paper color (#f4f3ef). Current behavior is kept, and reported as a note, until the owner picks one; then delete this.
-const THEME_COLOR_PENDING_OWNER_DECISION = '#1f2329';
 
 const html = read('index.html');
 const local = (u) => u.startsWith('/') && !u.startsWith('//');
@@ -44,17 +39,21 @@ for (const [f, why] of needed) {
   }
 }
 
-// 2. Manifest: theme_color matches the page's theme-color, and every icon exists.
+// 2. Manifest: theme_color and background_color match the page's light theme-color (the paper the page is drawn on, so
+//    the installed app's title bar and splash are the page's color), and every icon exists.
 const manifest = JSON.parse(read('manifest.webmanifest'));
 const attr = (tag, name) => tag.match(new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`))?.slice(1).find((v) => v !== undefined);
 const metaColors = [...html.matchAll(/<meta\b[^>]*>/g)].map((m) => m[0]).filter((t) => attr(t, 'name') === 'theme-color').map((t) => ({ color: (attr(t, 'content') ?? '').toLowerCase(), media: attr(t, 'media') ?? '' }));
 const pageColor = (metaColors.find((m) => !m.media) ?? metaColors.find((m) => m.media.includes('light')))?.color;
-const manifestColor = String(manifest.theme_color ?? '').toLowerCase();
 if (pageColor === undefined) problems.push('index.html has no <meta name="theme-color">: add one (light theme-color) to index.html');
-else if (manifestColor !== pageColor) {
-  const msg = `manifest theme_color ${manifestColor} differs from index.html <meta name="theme-color"> ${pageColor}: make manifest.theme_color in vite.config.ts equal the light theme-color`;
-  if (manifestColor === THEME_COLOR_PENDING_OWNER_DECISION) notes.push(`${msg} (allowed for now: THEME_COLOR_PENDING_OWNER_DECISION)`);
-  else problems.push(msg);
+else {
+  for (const key of ['theme_color', 'background_color']) {
+    const color = String(manifest[key] ?? '(none)').toLowerCase();
+    if (color !== pageColor) problems.push(`manifest ${key} ${color} differs from index.html <meta name="theme-color"> ${pageColor}: make manifest.${key} in vite.config.ts equal the light theme-color`);
+  }
+  // the first --paper in the built CSS is the light one (dark mode overrides it later, inside a media query)
+  const paper = assets.filter((f) => f.endsWith('.css')).map((f) => read(`assets/${f}`).match(/--paper:\s*(#[0-9a-fA-F]{3,8})/)?.[1]).find(Boolean)?.toLowerCase();
+  if (paper !== pageColor) problems.push(`the built CSS's light --paper is ${paper ?? '(not found)'}, but index.html <meta name="theme-color"> is ${pageColor}: keep --paper in src/index.css and the light theme-color the same color`);
 }
 for (const icon of manifest.icons ?? []) {
   if (typeof icon.src !== 'string') { problems.push(`a manifest icon has no src: fix manifest.icons in vite.config.ts`); continue; }
@@ -83,10 +82,9 @@ for (const path of ['/', '/index.html', '/sw.js']) {
   }
 }
 
-for (const n of notes) console.log(`check:dist note: ${n}`);
 if (problems.length) {
   for (const p of problems) console.error(`check:dist FAIL: ${p}`);
   console.error(`check:dist: ${problems.length} problem(s) in ${dist}`);
   process.exit(1);
 }
-console.log(`check:dist OK: ${precache.size} precache entries cover ${needed.size} needed files; manifest icons present; the app shell is served with no-cache`);
+console.log(`check:dist OK: ${precache.size} precache entries cover ${needed.size} needed files; manifest colors match the page; manifest icons present; the app shell is served with no-cache`);

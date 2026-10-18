@@ -10,16 +10,16 @@ const SCRIPT = fileURLToPath(new URL('./check-dist.mjs', import.meta.url));
 const HEADERS = '/\n  Cache-Control: no-cache\n/sw.js\n  Cache-Control: no-cache\n/index.html\n  Cache-Control: no-cache\n/assets/*\n  Cache-Control: public, max-age=31536000, immutable\n';
 const dirs = [];
 
-function build({ precache = ['assets/app.js', 'assets/app.css', 'assets/font.woff2', 'index.html'], headers = HEADERS, themeColor = '#f4f3ef', icon = true, meta = '<meta name="theme-color" content="#f4f3ef">', extraLink = '' } = {}) {
+function build({ precache = ['assets/app.js', 'assets/app.css', 'assets/font.woff2', 'index.html'], headers = HEADERS, themeColor = '#f4f3ef', backgroundColor = '#f4f3ef', css = '@font-face{src:url(/assets/font.woff2)}:root{--paper:#f4f3ef}@media (prefers-color-scheme:dark){:root{--paper:#15181d}}', icon = true, meta = '<meta name="theme-color" content="#f4f3ef">', extraLink = '' } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'check-dist-'));
   dirs.push(dir);
   mkdirSync(join(dir, 'assets'));
   writeFileSync(join(dir, 'index.html'), `<html><head>${meta}${extraLink}<script type="module" src="/assets/app.js"></script><link rel="stylesheet" href="/assets/app.css"></head><body></body></html>`);
   writeFileSync(join(dir, 'assets/app.js'), '');
-  writeFileSync(join(dir, 'assets/app.css'), '@font-face{src:url(/assets/font.woff2)}');
+  writeFileSync(join(dir, 'assets/app.css'), css);
   writeFileSync(join(dir, 'assets/font.woff2'), '');
   if (icon) writeFileSync(join(dir, 'pwa-192.png'), '');
-  writeFileSync(join(dir, 'manifest.webmanifest'), JSON.stringify({ theme_color: themeColor, icons: [{ src: 'pwa-192.png', sizes: '192x192' }] }));
+  writeFileSync(join(dir, 'manifest.webmanifest'), JSON.stringify({ theme_color: themeColor, background_color: backgroundColor, icons: [{ src: 'pwa-192.png', sizes: '192x192' }] }));
   writeFileSync(join(dir, 'sw.js'), `precacheAndRoute([${precache.map((u) => `{url:"${u}",revision:null}`).join(',')}])`);
   writeFileSync(join(dir, '_headers'), headers);
   return spawnSync(process.execPath, [SCRIPT, dir], { encoding: 'utf8' });
@@ -54,11 +54,23 @@ describe('check:dist', () => {
     expect(r.status).toBe(1);
     expect(r.stderr).toContain('manifest icon pwa-192.png');
   });
-  it('fails when theme_color differs from the page, except the parked owner decision', () => {
+  it('fails when theme_color differs from the page, the old charcoal included (no exception)', () => {
     expect(build({ themeColor: '#123456' }).status).toBe(1);
-    const parked = build({ themeColor: '#1f2329' });
-    expect(parked.status).toBe(0);
-    expect(parked.stdout).toContain('THEME_COLOR_PENDING_OWNER_DECISION');
+    const old = build({ themeColor: '#1f2329' });
+    expect(old.status).toBe(1);
+    expect(old.stderr).toContain('manifest theme_color #1f2329 differs from index.html <meta name="theme-color"> #f4f3ef: make manifest.theme_color in vite.config.ts equal the light theme-color');
+    expect(old.stdout).toBe('');
+  });
+  it('fails when background_color differs from the page', () => {
+    const r = build({ backgroundColor: '#ffffff' });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('manifest background_color #ffffff differs');
+  });
+  it('fails when the light --paper in the CSS differs from the page, and when there is none', () => {
+    const r = build({ css: '@font-face{src:url(/assets/font.woff2)}:root{--paper:#ffffff}' });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain("the built CSS's light --paper is #ffffff");
+    expect(build({ css: '@font-face{src:url(/assets/font.woff2)}' }).stderr).toContain("light --paper is (not found)");
   });
 });
 
