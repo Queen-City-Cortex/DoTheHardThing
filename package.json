@@ -35,6 +35,9 @@
     "check:full": "node scripts/check.mjs full",
     "journeys": "node e2e/run.mjs --serve",
     "journeys:fast": "node e2e/run.mjs --serve --fast",
+    "gaps": "node e2e/gaps.mjs --serve",
+    "mutate": "node scripts/mutate.mjs",
+    "vacuous": "node scripts/vacuous.mjs",
     "verify:live": "node scripts/verify-live.mjs",
     "preview": "vite preview"
   },

@@ -18,7 +18,7 @@ This directory describes how to verify the user-facing behavior of Do The Hard T
 ## Proof and skip reporting
 
 - Proof is the step screenshot and ARIA snapshot for each action, plus `localStorage.json`, in the evidence dir that the PASS line names.
-- Report FAIL with the journey's `result.json` error. No journey is expected to fail.
+- Report FAIL with the journey's `result.json` error. No journey is expected to fail, except the `gap-*` journeys: each asserts the wanted behavior of a known gap in [../known-gaps.json](../known-gaps.json), fails on purpose while the gap is open, and runs only through `node e2e/gaps.mjs` (`vdt list` leaves them out; see `../README.md`, Known gaps).
 - An entry point listed here but not exercised is reported as unverified.
 
 ## Feature entry contract
