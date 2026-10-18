@@ -4,13 +4,15 @@
 // Checks (FAIL exits 1): / is 200 with the root div; when dist/index.html exists, the live page serves the same hashed
 // entry script (so this is the build you just made); GET /api/event is 405 (the Worker answers, not the SPA fallback);
 // /og-image.png is image/png with the same bytes as public/og-image.png; /sw.js is served (and equals dist/sw.js when
-// dist exists). Headers on / are reported (INFO): cache-control and the security headers that are missing.
-// Checks of this build's files (the manifest) need the live site to serve this build: when its entry script equals
+// dist exists). INFO lines report the headers left out on purpose (LEFT_OUT in scripts/headers-policy.mjs).
+// Checks of this build's files (the manifest; the headers on /, which must equal what dist/_headers gives `/`, or
+// public/_headers without a dist, content-type aside, compared per name with whitespace collapsed) need the live site to serve this build: when its entry script equals
 // dist/index.html's, a mismatch is a FAIL; when it does not yet (or there is no dist to compare), they print PENDING,
 // which never fails the run on its own (the entry script check above still does).
 // --retries N: right after a deploy the edge may still serve the old build; retry the failing round N times, 15 s apart.
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
+import { LEFT_OUT, display, headersFor, norm, parseHeaders } from './headers-policy.mjs';
 import { SITE_URL } from '../src/copy.ts'; // Node 22.18+ strips the types, so this still runs as plain `node scripts/verify-live.mjs`
 
 const SITE = (process.env.SITE ?? SITE_URL).replace(/\/$/, '');
@@ -18,7 +20,6 @@ const ri = process.argv.indexOf('--retries');
 const RETRIES = ri > 0 ? Number(process.argv[ri + 1]) || 0 : 0;
 const WAIT_MS = 15_000;
 const sha = (buf) => createHash('sha256').update(buf).digest('hex').slice(0, 16);
-const SECURITY_HEADERS = ['strict-transport-security', 'x-content-type-options', 'referrer-policy', 'content-security-policy', 'permissions-policy', 'x-frame-options'];
 
 async function get(path) { // GET only: no method parameter, so no call can POST
   const res = await fetch(SITE + path, { redirect: 'manual', headers: { 'user-agent': 'verify-live (read-only)', 'cache-control': 'no-cache' } });
@@ -76,13 +77,16 @@ async function round() {
         : !mf.body.equals(wantMf) ? `live manifest.webmanifest (theme_color ${themeOf(mf.body)}, sha ${sha(mf.body)}) != dist/manifest.webmanifest (theme_color ${themeOf(wantMf)}, sha ${sha(wantMf)}): a stale deploy` : null,
     'manifest.webmanifest 200, equal to dist/manifest.webmanifest');
 
+  // the edge may add headers of its own (server, cf-ray, ...): only the ones _headers gives `/` are compared
   const h = home.res.headers;
-  const cc = h.get('cache-control');
-  warns.push(`/ cache-control: ${cc ?? '(none)'}`);
-  const missing = SECURITY_HEADERS.filter((n) => !h.has(n));
-  const present = SECURITY_HEADERS.filter((n) => h.has(n)).map((n) => `${n}: ${h.get(n).slice(0, 80)}`);
-  for (const p of present) warns.push(`/ has ${p}`);
-  if (missing.length) warns.push(`/ is missing ${missing.join(', ')} (add them to the \`/\` rule in public/_headers)`);
+  const headersFile = ['dist/_headers', 'public/_headers'].find((f) => existsSync(f));
+  const wantH = headersFile ? [...headersFor(parseHeaders(readFileSync(headersFile, 'utf8')).rules, '/')].filter(([n]) => n !== 'content-type') : [];
+  const diff = wantH.filter(([n, v]) => norm(h.get(n)) !== norm(v)).map(([n, v]) => `${display(n)}: ${h.get(n) ?? '(none)'}, want ${v}`);
+  ofBuild('headers on /',
+    !headersFile ? 'no dist/_headers or public/_headers to compare with'
+      : diff.length ? `/ does not get what ${headersFile} gives it: ${diff.join('; ')}` : null,
+    `/ gets the ${wantH.length} headers ${headersFile} gives it (${wantH.map(([n]) => display(n)).join(', ')})`);
+  for (const [n, why] of Object.entries(LEFT_OUT)) warns.push(h.has(n) ? `/ has ${n}: ${h.get(n).slice(0, 80)} (not from _headers)` : `/ has no ${n}, left out on purpose: ${why} (docs/architecture.md, Hosting)`);
   for (const n of ['server', 'cf-ray', 'age', 'etag']) if (h.has(n)) warns.push(`/ ${n}: ${h.get(n)}`);
   return { fails, warns, oks, pendings, liveEntry };
 }

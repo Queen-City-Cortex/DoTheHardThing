@@ -7,7 +7,8 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const SCRIPT = fileURLToPath(new URL('./check-dist.mjs', import.meta.url));
-const HEADERS = '/\n  Cache-Control: no-cache\n/sw.js\n  Cache-Control: no-cache\n/index.html\n  Cache-Control: no-cache\n/assets/*\n  Cache-Control: public, max-age=31536000, immutable\n';
+const SECURITY = '  X-Content-Type-Options: nosniff\n  Referrer-Policy: strict-origin-when-cross-origin\n  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()\n  X-Frame-Options: DENY\n';
+const HEADERS = '/*\n' + SECURITY + '/\n  Cache-Control: no-cache\n/sw.js\n  Cache-Control: no-cache\n/index.html\n  Cache-Control: no-cache\n/assets/*\n  Cache-Control: public, max-age=31536000, immutable\n';
 const dirs = [];
 
 function build({ precache = ['assets/app.js', 'assets/app.css', 'assets/font.woff2', 'index.html'], headers = HEADERS, themeColor = '#f4f3ef', backgroundColor = '#f4f3ef', css = '@font-face{src:url(/assets/font.woff2)}:root{--paper:#f4f3ef}@media (prefers-color-scheme:dark){:root{--paper:#15181d}}', icon = true, meta = '<meta name="theme-color" content="#f4f3ef">', extraLink = '' } = {}) {
@@ -40,7 +41,7 @@ describe('check:dist', () => {
     expect(r.stderr).toContain("add 'woff2' to workbox.globPatterns in vite.config.ts");
   });
   it('fails when `/` has no no-cache rule, even if /index.html has one', () => {
-    const r = build({ headers: '/index.html\n  Cache-Control: no-cache\n/sw.js\n  Cache-Control: no-cache\n' });
+    const r = build({ headers: '/*\n' + SECURITY + '/index.html\n  Cache-Control: no-cache\n/sw.js\n  Cache-Control: no-cache\n' });
     expect(r.status).toBe(1);
     expect(r.stderr).toContain('public/_headers gives / `Cache-Control: (nothing)`, not no-cache alone');
   });
@@ -93,5 +94,42 @@ describe('check:dist, more cases', () => {
     const r = build({ headers: HEADERS + '/*\n  Cache-Control: public, max-age=31536000, immutable\n' });
     expect(r.status).toBe(1);
     expect(r.stderr).toContain('not no-cache alone');
+  });
+});
+
+describe('check:dist, security headers', () => {
+  it('fails when no rule gives the security headers (the state before the `/*` rule), naming the fix', () => {
+    const r = build({ headers: HEADERS.replace('/*\n' + SECURITY, '') });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('public/_headers gives /, /sw.js, /manifest.webmanifest, /assets/app.js, /nope no X-Frame-Options, want `X-Frame-Options: DENY`: give the `/*` rule exactly that line');
+    expect(r.stderr).toContain('no X-Content-Type-Options');
+    expect(r.stderr).toContain('no Referrer-Policy');
+    expect(r.stderr).toContain('no Permissions-Policy');
+  });
+  it('fails when only `/` gets them: the SPA fallback path and the assets do not', () => {
+    const r = build({ headers: HEADERS.replace('/*\n' + SECURITY, '').replace('/\n  Cache-Control: no-cache\n', '/\n  Cache-Control: no-cache\n' + SECURITY) });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('gives /sw.js, /manifest.webmanifest, /assets/app.js, /nope no X-Frame-Options');
+    expect(r.stderr).not.toContain('gives /, ');
+  });
+  it('fails when a value differs from the policy', () => {
+    const r = build({ headers: HEADERS.replace('X-Frame-Options: DENY', 'X-Frame-Options: SAMEORIGIN') });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('`X-Frame-Options: SAMEORIGIN`, want `X-Frame-Options: DENY`');
+  });
+  it('fails when a second rule gives the same header (Cloudflare joins the values)', () => {
+    const r = build({ headers: HEADERS + '/assets/*\n  X-Content-Type-Options: nosniff\n' });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('gives /assets/app.js `X-Content-Type-Options: nosniff, nosniff`');
+  });
+  it('fails when a matching rule detaches one', () => {
+    const r = build({ headers: HEADERS + '/sw.js\n  ! Referrer-Policy\n' });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('gives /sw.js no Referrer-Policy');
+  });
+  it('fails on a line the parser cannot read', () => {
+    const r = build({ headers: HEADERS + 'https://example.com/*\n  X-Frame-Options: DENY\n' });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('is not a path rule');
   });
 });

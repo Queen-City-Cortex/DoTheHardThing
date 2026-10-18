@@ -1,11 +1,14 @@
 // check:dist: run after `npm run build`. Fails when the built PWA and hosting config disagree with each other:
 // a file the page needs is missing from the service worker precache (so it fails offline), the manifest theme_color or
-// background_color, or the built CSS's light --paper, differs from the page's light theme-color (index.html owns it), public/_headers does not give `/`, `/index.html` and `/sw.js` a no-cache
-// Cache-Control, or a manifest icon is missing from dist. Every failure names the file and the fix.
+// background_color, or the built CSS's light --paper, differs from the page's light theme-color (index.html owns it),
+// public/_headers does not give `/`, `/index.html` and `/sw.js` a no-cache Cache-Control, a path class the app serves
+// lacks a security header of POLICY (scripts/headers-policy.mjs) or has another value, or a manifest icon is missing
+// from dist. Every failure names the file and the fix.
 // Assumes the site is served from the root (vite `base: '/'`): references are matched as /path.
 // Usage: node scripts/check-dist.mjs [distDir]
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { POLICY, display, headersFor, norm, parseHeaders } from './headers-policy.mjs';
 
 const dist = process.argv[2] ?? 'dist';
 const problems = [];
@@ -64,22 +67,27 @@ for (const icon of manifest.icons ?? []) {
 // 3. _headers: the app shell must revalidate. Cloudflare matches the request path, and the app is served at `/`,
 //    so an /index.html rule never applies to it (measured with wrangler dev: `/` got the default Cache-Control).
 //    `/`, `/index.html` and `/sw.js` each need a matching rule whose Cache-Control says no-cache.
-const headersFile = existsSync(join(dist, '_headers')) ? read('_headers') : '';
-const rules = []; // { re, headers: Map(lowercase name -> value) }
-for (const line of headersFile.split('\n')) {
-  if (line.startsWith('/')) rules.push({ re: new RegExp('^' + line.trim().replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/:\w+/g, '[^/]+') + '$'), headers: new Map() });
-  else if (/^\s+[\w-]+:/.test(line) && rules.length) {
-    const i = line.indexOf(':');
-    rules.at(-1).headers.set(line.slice(0, i).trim().toLowerCase(), line.slice(i + 1).trim());
-  }
-}
-// Cloudflare applies every matching rule and joins duplicate header values with a comma
-const cacheControl = (path) => rules.filter((r) => r.re.test(path)).map((r) => r.headers.get('cache-control')).filter(Boolean).join(', ');
+const { rules, errors } = parseHeaders(existsSync(join(dist, '_headers')) ? read('_headers') : '');
+for (const e of errors) problems.push(`public/_headers ${e}: fix the line (see the parser in scripts/headers-policy.mjs)`);
 for (const path of ['/', '/index.html', '/sw.js']) {
-  const value = cacheControl(path);
+  const value = headersFor(rules, path).get('cache-control') ?? '';
   if (!/\bno-cache\b/.test(value) || /\bimmutable\b|\bmax-age=[1-9]/.test(value)) {
     problems.push(`public/_headers gives ${path} \`Cache-Control: ${value || '(nothing)'}\`, not no-cache alone: give ${path} a rule with \`Cache-Control: no-cache\` and no other matching rule that caches it (Cloudflare matches the request path, so an /index.html rule does not apply to \`/\`)`);
   }
+}
+
+// 4. _headers: every path class the app serves gets each security header in POLICY (scripts/headers-policy.mjs) with
+//    exactly its value: the shell, the service worker, the manifest, a hashed asset, and an unknown path (the SPA
+//    fallback serves index.html there, and Cloudflare matches the request path, not the file).
+const js = assets.find((f) => f.endsWith('.js'));
+const paths = ['/', '/sw.js', '/manifest.webmanifest', js ? `/assets/${js}` : '/assets/index.js', '/nope'];
+for (const [name, want] of Object.entries(POLICY)) {
+  const wrong = new Map(); // what the path gets -> the paths that get it
+  for (const path of paths) {
+    const got = headersFor(rules, path).get(name);
+    if (norm(got) !== want) { const k = got === undefined ? `no ${display(name)}` : `\`${display(name)}: ${got}\``; wrong.set(k, [...(wrong.get(k) ?? []), path]); }
+  }
+  for (const [k, ps] of wrong) problems.push(`public/_headers gives ${ps.join(', ')} ${k}, want \`${display(name)}: ${want}\`: give the \`/*\` rule exactly that line, and no other matching rule the same header (POLICY in scripts/headers-policy.mjs)`);
 }
 
 if (problems.length) {
@@ -87,4 +95,4 @@ if (problems.length) {
   console.error(`check:dist: ${problems.length} problem(s) in ${dist}`);
   process.exit(1);
 }
-console.log(`check:dist OK: ${precache.size} precache entries cover ${needed.size} needed files; manifest colors match the page; manifest icons present; the app shell is served with no-cache`);
+console.log(`check:dist OK: ${precache.size} precache entries cover ${needed.size} needed files; manifest colors match the page; manifest icons present; the app shell is served with no-cache; ${paths.length} path classes get the ${Object.keys(POLICY).length} security headers`);
