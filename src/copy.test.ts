@@ -5,10 +5,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createElement as h } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { COPY, REQUIRED, fmt, t, type CopyEntry, type CopyId } from './copy';
+import { COPY, REQUIRED, fill, fmt, t, type CopyEntry, type CopyId } from './copy';
 import { About, Ask, BlockView, Close, Closed, Days, Name, Pick, Welcome } from './App';
 import * as L from './logic';
 import { readTranscript } from '../scripts/transcript.mjs';
+import copySource from './copy.ts?raw';
+import ts from 'typescript';
 
 const entries = Object.entries(COPY) as [CopyId, CopyEntry][];
 const cited = entries.filter(([, e]) => e.kind !== 'own');
@@ -122,6 +124,36 @@ describe('every copy entry has a kind and the right ref', () => {
       expect(seen.get(e.text), `${id} repeats ${seen.get(e.text)}: use t('${seen.get(e.text)}') in both places`).toBeUndefined();
       seen.set(e.text, id);
     }
+  });
+});
+
+// fmt holds no talk words: every sentence is an entry with a kind, and fmt only fills its {placeholders} and joins
+// entries. Read from the source, since fmt's literals are not visible at run time.
+describe('fmt holds no sentences of its own', () => {
+  const source = ts.createSourceFile('copy.ts', copySource, ts.ScriptTarget.Latest, true);
+  const literals: string[] = [];
+  let found = false;
+  const walk = (node: ts.Node, inFmt: boolean) => {
+    const here = inFmt || (ts.isVariableDeclaration(node) && node.name.getText(source) === 'fmt');
+    if (here && ts.isVariableDeclaration(node)) found = true;
+    if (here && (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node) || ts.isTemplateHead(node) || ts.isTemplateMiddle(node) || ts.isTemplateTail(node))) literals.push(node.text);
+    node.forEachChild((child) => walk(child, here));
+  };
+  walk(source, false);
+  it('finds fmt in src/copy.ts', () => expect(found).toBe(true));
+  it('no literal in fmt has four or more words', () => {
+    for (const literal of literals) {
+      const words = literal.split(/\s+/).filter((w) => /\w/.test(w)).length;
+      expect(words, `fmt holds "${literal}": make it an entry in COPY with a kind (a value in it is a {placeholder} filled with fill()), and build the line from t() or fill()`).toBeLessThan(4);
+    }
+  });
+  it('fill() replaces each placeholder once, keeps typed text as typed, and refuses a missing value', () => {
+    expect(fmt.closeItem('{item} $& $1')).toBe('“{item} $& $1”, your one thing today.');
+    expect(fmt.pausedLine(3, 10)).toBe('Stepped away 3 min. Back within 10 to keep it one block. You get one pause per block.');
+    expect(() => fill('close.item', {})).toThrow("fill('close.item'): no value for {item}");
+  });
+  it.each(entries.filter(([, e]) => e.text.includes('{')))('%s: every {placeholder} has a name', (_id, e) => {
+    expect(e.text.replace(/\{\w+\}/g, ''), 'a brace in an entry is a {name} placeholder, filled by fill()').not.toMatch(/[{}]/);
   });
 });
 

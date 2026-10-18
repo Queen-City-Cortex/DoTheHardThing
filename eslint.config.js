@@ -76,10 +76,12 @@ const METHOD_SYNTAX = [
 // The app files whose words live in src/copy.ts. Anywhere in these files, text of four or more words written inline (JSX
 // text, a string literal, a template literal part, in a screen or a module-level constant alike) is copy that went
 // around the module and its transcript checks. A new file under src/ that renders or returns words joins this list.
-// Still not caught: strings of one to three words ('Start', 'Not today'), text in a file not listed here (copy.ts itself,
-// method.ts with its talk quotes, tests, a new file nobody added), and a sentence built by joining short pieces.
-// scripts/boundaries.test.mjs fails when a listed file no longer exists, so a rename or a move cannot drop a file from
-// the rule without a test saying so.
+// The lint judges each literal part on its own. Still not caught: strings of one to three words ('Start', 'Not today'),
+// a sentence built by joining short pieces (concatenation, an array `.join(' ')`), a template whose literal parts each
+// have three words or fewer (`${n} days you have`), and text in a file not listed here (copy.ts itself, method.ts with
+// its talk quotes, tests). scripts/boundaries.test.mjs fails when a listed file no longer exists, and when this list is
+// not every non-test .ts/.tsx file directly under src/ minus its NOT_COPY_FILES (copy.ts, method.ts, vite-env.d.ts,
+// each with its reason), so a rename, a removal or a new file cannot change what the rule covers without a test saying so.
 export const COPY_FILES = ['src/App.tsx', 'src/main.tsx', 'src/logic.ts', 'src/reminder.ts', 'src/storage.ts', 'src/analytics.ts', 'src/clock.ts', 'src/decode.ts', 'src/events.ts']
 const MOVE_TEXT = "Move this text to src/copy.ts and render it with t(id); a talk quote needs kind: 'quote' and its transcript timestamp as ref." +
   ' Not words a person reads (a class list, an event name)? Disable this rule on that one line with the reason.'

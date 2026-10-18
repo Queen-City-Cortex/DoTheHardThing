@@ -12,6 +12,16 @@
 //   own         the app's own words; it can never carry a talk timestamp
 // src/copy.test.ts checks the quotes and refs against the transcript where FERRISS_TRANSCRIPT points at one (the transcript
 // is not in the repo), and checks kinds, ref shapes and the REQUIRED lines everywhere.
+// fmt holds no talk words: a line from the talk is an entry with a kind. A line with a value in it is an entry with a
+// {placeholder} that fmt fills through fill(), and src/copy.test.ts fails on any literal of four or more words in fmt.
+//
+// Some ids are named for one screen and show on others too (the no-duplicate-text test makes them share one entry), so a
+// wording change there moves every place: close.yes is also Ask's Yes, pick.eyebrow is also Ask's last button,
+// twoQuestions is the last Name button and the Ask eyebrow, yourOneThing is the block eyebrow and the Your days stand-in
+// for a done day with no text, and back, next, about, done, yourDays and no show on more than one screen.
+//
+// Bundle cost: the ids, kinds and refs ship to the browser with the text (about 1.5 KB gzip for 142 entries). If the
+// table keeps growing, build a text-only map at build time.
 
 type Digit = '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9';
 /** A timestamp in the talk transcript, m:ss (two digits of seconds, so '4:5' and '4:005' are type errors). */
@@ -104,6 +114,9 @@ export const COPY = entries({
   'name.skip': { kind: 'own', text: 'Skip' },
   'name.listed': { kind: 'own', text: 'Already on your list' },
   'name.listedTap': { kind: 'own', text: 'Already on your list. Tap one if it fits here too.' },
+  // the notes under the input when the text is already listed: gained this step's tag, or had it already
+  'name.noteTagged': { kind: 'own', text: 'That one\'s already on your list. Marked {tag} too.' },
+  'name.noteAlready': { kind: 'own', text: 'That one\'s already on your list as {label}.' },
   // own, not a paraphrase: "three to five" is the talk's (4:11), but the talk says "and no more", never that fewer is fine
   'name.fewer': { kind: 'own', text: 'Three to five usually helps, but fewer is fine if that\'s honest.' },
   // the tag words on every chip and in the Name notes (fmt.tag, fmt.pushedTimes)
@@ -145,6 +158,7 @@ export const COPY = entries({
   'block.drifted': { kind: 'paraphrase', text: 'You came back. No need to spiral.', ref: '5:33' },
   // own: the talk's block is uninterrupted; the one short pause is the app's rule (BREAKS_PER_BLOCK in src/method.ts)
   'block.pauseHint': { kind: 'own', text: 'One short pause if you must, then back.' },
+  'block.paused': { kind: 'own', text: 'Stepped away {min} min. Back within {limit} to keep it one block.' }, // fmt.pausedLine
   'block.onePause': { kind: 'own', text: 'You get one pause per block.' }, // the end of fmt.pausedLine
   'block.back': { kind: 'own', text: 'I\'m back' },
   'block.comeBack': { kind: 'quote', text: 'Gently come back to your one to-do', ref: '5:37' },
@@ -159,6 +173,9 @@ export const COPY = entries({
   'close.eyebrow': { kind: 'own', text: 'Close the day' },
   'close.hero': { kind: 'own', text: 'Did you do it?' },
   'close.noItem': { kind: 'own', text: 'Your one thing today.' },
+  'close.item': { kind: 'own', text: '“{item}”, your one thing today.' }, // fmt.closeItem
+  // fmt.closeCount; `days` is daysWord(n): '1 day' or 'N days'
+  'close.count': { kind: 'own', text: '{days} you\'ve done your one thing since you started' },
   'close.yes': { kind: 'own', text: 'Yes' },
   'close.notToday': { kind: 'own', text: 'Not today' },
   'close.first': { kind: 'own', text: 'That\'s your first one. Nothing else to add.' },
@@ -200,7 +217,11 @@ export const COPY = entries({
   'privacy.tallies': { kind: 'own', text: 'We keep three anonymous tallies: days started, days finished, and history opened. Each is a plain count plus the country, with no name, number, cookie, or address attached.' },
   'privacy.dnt': { kind: 'own', text: 'If your browser’s Do Not Track setting is on, we keep no tallies at all.' },
   'privacy.host': { kind: 'own', text: 'Our host, Cloudflare, counts page visits without cookies.' },
-  // what the reminder control says (reminderStatus in logic.ts); a set reminder is fmt.reminderSet
+  // what the reminder control says (reminderStatus in logic.ts); a set reminder is fmt.reminderSet: reminder.set, then
+  // how it fires (reminder.trigger with a scheduled trigger, reminder.openOnly without)
+  'reminder.set': { kind: 'own', text: 'Reminder set for {time}.' },
+  'reminder.trigger': { kind: 'own', text: 'It is scheduled on this device and refreshed each time you open the app.' },
+  'reminder.openOnly': { kind: 'own', text: 'It only fires while this app is open.' },
   'reminder.unsupported': { kind: 'own', text: 'Notifications aren\'t available on this device. On iPhone, add to Home Screen first.' },
   'reminder.denied': { kind: 'own', text: 'Notifications are blocked for this site, so no reminder can be set. Allow them in your browser settings.' },
   'reminder.ask': { kind: 'own', text: 'Pick a time and your browser will ask for permission.' },
@@ -215,12 +236,17 @@ export type CopyId = keyof typeof COPY;
 export const t = (id: CopyId): string => COPY[id].text;
 /** The tags, as logic.ts names them (its Tag type; copy.ts imports nothing, so the names are repeated here). */
 export type TagName = 'pushed' | 'risky' | 'anxious';
+/** An entry with its {placeholders} filled in one pass (a value is never scanned again, so text a person typed stays as typed). */
+export const fill = (id: CopyId, values: Record<string, string | number>): string => t(id).replace(/\{(\w+)\}/g, (_, key: string) => {
+  if (!(key in values)) throw new Error(`fill('${id}'): no value for {${key}}`);
+  return String(values[key]);
+});
 
 // lines with a value in them, built from the entries above
 export const fmt = {
-  closeItem: (item: string) => `“${item}”, your one thing today.`,
-  // `days` is daysWord(n) from logic.ts: '1 day' or 'N days'
-  closeCount: (days: string) => `${days} you've done your one thing since you started`,
+  closeItem: (item: string) => fill('close.item', { item }),
+  // `days` is daysWord(n): '1 day' or 'N days'
+  closeCount: (days: string) => fill('close.count', { days }),
   pickLine: (small: boolean, late: boolean) =>
     `${t(small ? 'pick.small' : 'pick.full')}${late ? `. ${t('pick.late')}` : `, ${t('pick.early')}`} ${t('pick.slide')}`,
   // a count of days, for Close, Your days and the About row: '1 day' or 'N days'
@@ -235,12 +261,10 @@ export const fmt = {
   pushedTimes: (n: number) => `${t('tag.pushed')} ${n}×`,
   remove: (item: string) => `Remove ${item}`,
   // the notes under the Name input when the text is already listed: gained this step's tag, or had it already
-  noteTagged: (tag: string) => `That one's already on your list. Marked ${tag} too.`,
-  noteAlready: (label: string) => `That one's already on your list as ${label}.`,
-  pausedLine: (awayMin: number, limitMin: number) => `Stepped away ${awayMin} min. Back within ${limitMin} to keep it one block. ${t('block.onePause')}`,
-  reminderSet: (time: string, trigger: boolean) => `Reminder set for ${time}. ${trigger
-    ? 'It is scheduled on this device and refreshed each time you open the app.'
-    : 'It only fires while this app is open.'}`,
+  noteTagged: (tag: string) => fill('name.noteTagged', { tag }),
+  noteAlready: (label: string) => fill('name.noteAlready', { label }),
+  pausedLine: (awayMin: number, limitMin: number) => `${fill('block.paused', { min: awayMin, limit: limitMin })} ${t('block.onePause')}`,
+  reminderSet: (time: string, trigger: boolean) => `${fill('reminder.set', { time })} ${t(trigger ? 'reminder.trigger' : 'reminder.openOnly')}`,
 };
 
 // Lines that must be on a screen whenever it shows: src/copy.test.ts renders each screen state and looks for every one.

@@ -9,15 +9,18 @@
 //   `const { now } = Date` IS caught (no-restricted-properties handles destructuring).
 // Pure modules: logic.ts may import only ./method and ./copy; method.ts, events.ts and copy.ts import nothing.
 // App copy (COPY_FILES): anywhere in the listed files, inline text of 4 or more words is reported, in a screen function,
-// an arrow function or a module-level constant alike. Not caught: 1 to 3 words, text in a file not listed (a new file
-// nobody added), and a sentence joined from short pieces. Values of non-copy JSX attributes (className, id, key, href,
-// rel, target, type, role and the like) are not copy; aria-label and title are. A listed file that no longer exists fails the last describe.
+// an arrow function or a module-level constant alike. The lint judges each literal part on its own, so not caught: 1 to
+// 3 words, a sentence joined from short pieces (concatenation, `{' '}`-split JSX text, an array `.join(' ')`), a
+// template whose literal parts each have 3 words or fewer (`${n} days you have`), and text in a file not listed.
+// Values of non-copy JSX attributes (className, id, key, href, rel, target, type, role and the like) are not copy;
+// aria-label and title are. The last describe fails when a listed file no longer exists, and when COPY_FILES is not
+// every non-test .ts/.tsx file directly under src/ minus NOT_COPY_FILES (so a removed entry or a new file nobody added fails).
 // Method numbers (METHOD_SYNTAX, everywhere in src except method.ts and tests) are caught only in the shapes they have
 // taken: an hour compared with a literal, numbers of 2 or more in an array literal, `.length` compared with a literal of
 // 2 or more, and `<n> * 60_000`. Not caught: a cutoff or count through a variable (`const late = 12; hourOf(t) >= late`),
 // arithmetic on the literal (`getHours() > 12 - 1`), a bare default (`useState(small ? 90 : BLOCK_MIN)`), `===` on a count.
 import { ESLint } from 'eslint';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { COPY_FILES } from '../eslint.config.js';
@@ -251,6 +254,9 @@ const GAPS = [
   // app copy the lint does not see: a file not in COPY_FILES, and a sentence joined from pieces of three words or fewer
   ['src/Pick.tsx', 'export function Pick() { return <p>Let the rest slide today.</p>; }'],
   ['src/App.tsx', "export function Pick() { return <p>{'Let the rest'} {'slide today.'}</p>; }"],
+  // the lint judges each literal part on its own: a template whose parts each have three words or fewer, and an array join
+  ['src/App.tsx', 'export const have = (n: number) => `${n} days you have`;'],
+  ['src/App.tsx', "export const slide = ['Let the', 'rest slide', 'today.'].join(' ');"],
 ];
 
 describe('module map: bad snippets are reported with the fix', () => {
@@ -270,6 +276,27 @@ describe('module map: known gaps', () => {
   it.each(GAPS)('%s: %s (not caught)', async (file, code) => {
     expect(await restricted(file, code)).toEqual([]);
   });
+});
+
+// The src files outside the copy lint, each with its reason. Every other non-test .ts/.tsx file directly under src/ must be
+// in COPY_FILES (eslint.config.js), so dropping an entry or adding a file nobody listed fails the test below.
+const NOT_COPY_FILES = {
+  'src/copy.ts': 'the home of the copy: its entries are the text, checked by src/copy.test.ts (kinds, refs, the talk, and no sentence in fmt)',
+  'src/method.ts': 'the method rules, each with its talk source and quote, checked against the transcript by scripts/check-method-quotes.mjs',
+  'src/vite-env.d.ts': 'type declarations only, no code and no text',
+};
+describe('app copy: COPY_FILES is every src file except the listed exclusions', () => {
+  const srcFiles = readdirSync(new URL('../src', import.meta.url), { withFileTypes: true })
+    .filter((e) => e.isFile() && /\.tsx?$/.test(e.name) && !/\.test\.tsx?$/.test(e.name)).map((e) => `src/${e.name}`);
+  it.each(srcFiles)('%s is in COPY_FILES or NOT_COPY_FILES', (file) => {
+    expect(COPY_FILES.includes(file) || Object.hasOwn(NOT_COPY_FILES, file),
+      `${file} is not covered by the copy lint: add it to COPY_FILES in eslint.config.js, or to NOT_COPY_FILES in scripts/boundaries.test.mjs with the reason it holds no app text`).toBe(true);
+  });
+  it.each(Object.keys(NOT_COPY_FILES))('%s (excluded) exists and is not also in COPY_FILES', (file) => {
+    expect(srcFiles, `${file} is in NOT_COPY_FILES but does not exist: remove it from NOT_COPY_FILES in scripts/boundaries.test.mjs`).toContain(file);
+    expect(COPY_FILES, `${file} is in both COPY_FILES and NOT_COPY_FILES: keep it in one`).not.toContain(file);
+  });
+  it('COPY_FILES has no repeats', () => expect(new Set(COPY_FILES).size).toBe(COPY_FILES.length));
 });
 
 describe('app copy: every file in COPY_FILES exists and is still linted for inline text', () => {

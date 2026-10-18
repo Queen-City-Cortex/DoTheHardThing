@@ -299,7 +299,6 @@ export function dayLabel(date: string): string {
   const part = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
   return `${part('weekday')} ${part('day')}`;
 }
-export const daysWord = fmt.daysWord;
 
 /** What closing the day says after "Did you do it?". Nothing until it is answered. */
 export function closeLines(didIt: boolean | null, total: number): { note: string | null; count: string | null; first: boolean } {
@@ -307,9 +306,9 @@ export function closeLines(didIt: boolean | null, total: number): { note: string
   if (didIt) {
     return total <= 1
       ? { note: t('close.first'), count: t('close.firstCount'), first: true }
-      : { note: t('close.good'), count: fmt.closeCount(daysWord(total)), first: false };
+      : { note: t('close.good'), count: fmt.closeCount(fmt.daysWord(total)), first: false };
   }
-  return { note: t('close.alright'), count: total === 0 ? null : fmt.closeCount(daysWord(total)), first: false };
+  return { note: t('close.alright'), count: total === 0 ? null : fmt.closeCount(fmt.daysWord(total)), first: false };
 }
 
 // ---------- bad days ----------

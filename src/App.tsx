@@ -485,10 +485,10 @@ export function Days({ days, archive, onBack }: { days: L.Day[]; archive: L.Arch
       ) : (
         <>
           <p className="muted">{t('days.only')}</p>
-          <Tally line={fmt.daysCount(L.daysWord(total))} />
+          <Tally line={fmt.daysCount(fmt.daysWord(total))} />
           {entries.length > 0 && (
             <>
-              <p className="label">{fmt.monthLine(L.monthLabel(ym), L.daysWord(L.monthDone(days, archive, ym)))}</p>
+              <p className="label">{fmt.monthLine(L.monthLabel(ym), fmt.daysWord(L.monthDone(days, archive, ym)))}</p>
               <ul className="dates" aria-label={L.monthLabel(ym)}>
                 {entries.map((e) => <li key={e.date}><span className="d">{L.dayLabel(e.date)}</span><span className="t">{e.text}</span></li>)}
               </ul>
@@ -498,7 +498,7 @@ export function Days({ days, archive, onBack }: { days: L.Day[]; archive: L.Arch
             <>
               <p className="label">{t('days.earlier')}</p>
               <ul className="months" aria-label={t('days.earlier')}>
-                {earlier.map((m) => <li key={m.ym}><span>{month(m.ym)}</span><span>{L.daysWord(m.count)}</span></li>)}
+                {earlier.map((m) => <li key={m.ym}><span>{month(m.ym)}</span><span>{fmt.daysWord(m.count)}</span></li>)}
               </ul>
             </>
           )}
