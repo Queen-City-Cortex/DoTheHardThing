@@ -21,7 +21,7 @@ npm run check
 
 If you change `.github/workflows`, also run [actionlint](https://github.com/rhysd/actionlint) 1.7.12 and make sure it prints nothing (`npm run check:workflows`, part of `npm run check`, guards the deploy gate but not syntax or shell).
 
-Merging to `master` deploys the live site automatically once CI passes (see [Automatic deploy](./README.md#automatic-deploy) for the required secrets and how to roll back). Only maintainers merge. Contributors never need Cloudflare credentials: pull requests and forks only run the checks.
+Merging to `master` deploys the live site automatically once CI passes (see [Automatic deploy](./docs/deploy.md#automatic-deploy) for the required secrets and how to roll back). Only maintainers merge. Contributors never need Cloudflare credentials: pull requests and forks only run the checks.
 
 Changes that touch what a person sees or does (screens, copy, the block timer, closing the day) should also pass the end-to-end journeys in [`e2e/`](./e2e/README.md). For example: `npm run build && VDT_PORT=$((4400 + RANDOM % 500)) npm run journeys -- first-visit start-end-block` (any free port above 4400; other people or agents on the machine may use the default 4317). CI runs 8 of them on every pull request. If you change behavior, add or update a journey or a unit test with it.
 

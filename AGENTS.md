@@ -8,7 +8,7 @@ Run this before you call any change done. It stops at the first failure and prin
 
 | Command | What it runs | When |
 | --- | --- | --- |
-| `npm run check:fast` | public hygiene, text check, maps check, social card check, AGENTS.md check, workflows check, typecheck, lint, unit tests | while iterating |
+| `npm run check:fast` | public hygiene, text check, imports check, maps check, social card check, AGENTS.md check, workflows check, typecheck, lint, unit tests | while iterating |
 | `npm run check` | check:fast, then `vite build` and the dist check | before every commit |
 | `npm run check:full` | check, then every journey against the fresh build | before a change to what a person sees or does is called done |
 | `npm run journeys:fast` | the 8 per-PR journeys (`FAST` in `e2e/run.mjs`) on the current `dist/` | after `npm run build` |
@@ -58,6 +58,7 @@ The journey commands serve `dist/` on `VDT_PORT` (default 4317). Other agents sh
 | The worker imports only `src/events.ts` from the app. `tsconfig.worker.json` is part of `tsc -b` and typechecks with the Workers types and no DOM lib (`document` or `localStorage` in the worker is a type error), so a type error in `worker/index.ts` or `src/events.ts` fails `npm run build` and blocks the deploy | `eslint.config.js` (worker block), `tsconfig.worker.json`, `scripts/boundaries.test.mjs` | `npm run check` |
 | Never rename the `one-thing:*` storage keys; v2 is read, never written or deleted | `src/storage.test.ts`, journey `migrate-v2` | `npm test`, `npm run journeys -- migrate-v2` |
 | Text meets WCAG AA contrast in light and dark | `src/contrast.test.ts`, journey `contrast-aa` | `npm test`, `npm run journeys -- contrast-aa` |
+| Every package that `src/`, `worker/`, `scripts/`, `e2e/` or a root config file imports (static, re-export, `import('x')`, `require('x')` or `createRequire(...)('x')` with a literal) is in `dependencies` or `devDependencies` of `package.json`, not only installed because another package needs it (a transitive import breaks on the next upgrade of its parent); Node builtins and paths in this repo are not packages. Declare with `npm install -D <name>@<the version npm ls shows>` (no `-D` for `src/` and `worker/` code); run before the change that drops a parent such as an eslint major | `scripts/check-imports.mjs`, `scripts/check-imports.test.mjs` | `npm run check:imports` |
 | No em or en dash in `src/`, `e2e/`, `scripts/`, `docs/`, `README.md`, `AGENTS.md`, `CONTRIBUTING.md`, `index.html` or `vite.config.ts` (nor a `\u` or `\u{}` escape or entity of one in `src/` and `index.html`, or a CSS escape such as `\2014` in a `src/` stylesheet); the domain is shown as DoTheHardThing.app (lowercase only in a URL or a code span that is only the hostname); the brand is Do The Hard Thing | `scripts/check-text.mjs`, `scripts/check-text.test.mjs` (also run by `npm run lint`) | `npm run check:text` |
 | No em dash in the UI | journeys `welcome-v1`, `review-copy`, `first-visit` | `npm run journeys -- welcome-v1 review-copy first-visit` |
 | Close never shows a verdict ("a start, not a full block", "got its block") | `noVerdict` in `e2e/drive.mjs` close journeys | `npm run journeys -- close-day` |

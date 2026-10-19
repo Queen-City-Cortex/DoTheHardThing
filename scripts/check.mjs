@@ -1,9 +1,9 @@
 // The agent loop: one command that says whether a change is done. Steps run cheapest first and stop at the first
 // failure, which is printed with the command to rerun it alone.
 // Usage: node scripts/check.mjs [fast|default|full]   (npm run check:fast | check | check:full)
-//   fast     public hygiene, text rules, the feature maps agree with the journeys (check:maps), the social card was built
-//            from its current inputs (check:og), AGENTS.md enforcers exist, the CI workflow and Dependabot policy keep the
-//            deploy gate (check:workflows), typecheck, lint, unit tests (no build)
+//   fast     public hygiene, text rules, every imported package is declared (check:imports), the feature maps agree with the
+//            journeys (check:maps), the social card was built from its current inputs (check:og), AGENTS.md enforcers exist,
+//            the CI workflow and Dependabot policy keep the deploy gate (check:workflows), typecheck, lint, unit tests (no build)
 //   default  fast + build + dist check
 //   full     default + every journey against the fresh build (e2e/run.mjs --serve)
 import { spawnSync } from 'node:child_process';
@@ -12,6 +12,7 @@ const mode = process.argv[2] ?? 'default';
 const FAST = [
   ['check:public-hygiene', 'node scripts/check-public-hygiene.mjs'],
   ['check:text', 'node scripts/check-text.mjs'],
+  ['check:imports', 'node scripts/check-imports.mjs'],
   ['check:maps', 'node scripts/check-maps.mjs'],
   ['check:og', 'node scripts/check-og.mjs'],
   ['check:agents-md', 'node scripts/check-agents-md.mjs'],
