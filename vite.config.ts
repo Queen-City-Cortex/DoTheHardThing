@@ -46,6 +46,11 @@ export default defineConfig(({ mode }) => ({
       },
     }),
   ],
+  // The browser floor this app shipped on Vite 6 (its default target; Vite 6 also listed es2020, which these four imply).
+  // Vite 8's default raises it to Safari 16.4, Chrome 111 and Firefox 114, which emits range media queries (`width<=380px`)
+  // that Safari before 16.4 drops, so the small-phone layout would vanish there. Raise it on purpose
+  // (docs/architecture/hosting.md, Browser floor), never by a Vite upgrade.
+  build: { target: ['chrome87', 'edge88', 'firefox78', 'safari14'] },
   preview: { allowedHosts: true, host: '127.0.0.1', port: 4173 },
   test: { include: ['src/**/*.test.ts', 'worker/**/*.test.ts', 'scripts/**/*.test.mjs'], css: { include: [/index\.css/] } }, // contrast.test.ts reads the stylesheet as text
 }));
