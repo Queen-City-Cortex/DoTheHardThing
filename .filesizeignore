@@ -1,0 +1,52 @@
+# Files the pre-commit file size check (scripts/check-file-size.mjs) does not measure: anything an agent does not
+# write or edit by hand. One gitignore-style glob per line: `#` starts a comment, a pattern with no `/` matches that name
+# at any depth (`*.min.*`), a pattern with a `/` is anchored at the repo root, a trailing `/` means a directory and
+# everything under it, `**` crosses directories, a leading `!` puts a path back. The last matching line wins.
+# A file whose first 10 lines say `@generated` or `DO NOT EDIT` is skipped too, and so are binary files and symlinks,
+# so images, fonts and the PNG screenshots need no line here. Add a path here only when no agent writes it by hand.
+
+# Lockfiles: written by the package manager
+package-lock.json
+npm-shrinkwrap.json
+pnpm-lock.yaml
+yarn.lock
+bun.lock
+bun.lockb
+Cargo.lock
+Gemfile.lock
+poetry.lock
+Pipfile.lock
+composer.lock
+uv.lock
+go.sum
+
+# Build output and tool caches (most are also in .gitignore; listed so a forced add is still skipped)
+dist/
+build/
+coverage/
+.vite/
+dev-dist/
+node_modules/
+.wrangler/
+playwright-report/
+test-results/
+*.tsbuildinfo
+
+# Generated code, minified bundles and source maps
+*.generated.*
+*.gen.*
+*.min.*
+*.map
+
+# SVG is text, not a binary, so the binary skip does not cover it (favicon.svg)
+*.svg
+
+# Data that a tool writes or a person pastes in: snapshots, fixtures, and the journey evidence (which the runner writes
+# outside the repo unless VDT_EVIDENCE points inside it)
+*.snap
+__snapshots__/
+fixtures/
+e2e/evidence/
+
+# The social card record: `node scripts/check-og.mjs --write` produces it, nobody edits it by hand
+scripts/og/og-image.inputs.json
