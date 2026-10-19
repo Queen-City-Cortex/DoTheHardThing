@@ -12,7 +12,7 @@ Do The Hard Thing is a static single-page app plus one tiny Cloudflare Worker.
 | `vite.config.ts` | Vite config and `vite-plugin-pwa` (service worker, web manifest). Also adds the optional Cloudflare Web Analytics beacon at build time. |
 | `e2e/` | Playwright journeys that drive a production build in headless Chromium. See [`e2e/README.md`](../e2e/README.md). |
 | `scripts/screens.mjs` | Regenerates `docs/screenshots/`. |
-| `scripts/og/card.mjs` | Rebuilds the link preview card `public/og-image.png` from a live screenshot of the Pick screen (see the README). |
+| `scripts/og/card.mjs` | Rebuilds the link preview card `public/og-image.png` from a live screenshot of the Pick screen (see [social-preview.md](social-preview.md)). |
 
 ## Module map
 
@@ -118,7 +118,7 @@ The app depends on the device's local clock: a day is the local calendar date, a
 
 ## Anonymous counts
 
-The client sends at most three events (`started`, `finished`, `opened_history`), once per browser per day, as `POST /api/event` with `{"event":"<name>"}`. Nothing is sent in development or when the browser signals Do Not Track or Global Privacy Control. The Worker allow-lists the name and writes a data point to Workers Analytics Engine containing the event name and the country code from Cloudflare's request metadata. It does not store IP addresses or user agents. See the Analytics section of the [README](../README.md).
+The client sends at most three events (`started`, `finished`, `opened_history`), once per browser per day, as `POST /api/event` with `{"event":"<name>"}`. Nothing is sent in development or when the browser signals Do Not Track or Global Privacy Control. The Worker allow-lists the name and writes a data point to Workers Analytics Engine containing the event name and the country code from Cloudflare's request metadata. It does not store IP addresses or user agents. See [analytics.md](analytics.md).
 
 ## Hosting
 
@@ -138,11 +138,11 @@ What the hosting config promises, and the check that holds it:
 
 ## Deploy
 
-`npm run build` writes `dist/`. `npx wrangler deploy` uploads `dist/` as static assets and deploys the Worker. See the README for what a fork must change.
+`npm run build` writes `dist/`. `npx wrangler deploy` uploads `dist/` as static assets and deploys the Worker. See [deploy.md](deploy.md) for what a fork must change.
 
-CI deploys from `.github/workflows/ci.yml` (the README's Automatic deploy section has the steps):
+CI deploys from `.github/workflows/ci.yml` ([deploy.md](deploy.md#automatic-deploy) has the steps):
 
 - **The gate.** `deploy` needs both `check` and `journeys`, and runs only for a push to `master` in this repository. It once needed `check` alone, so a master build whose journeys failed could have gone live.
-- **The preflight.** The `check` job runs `wrangler deploy --dry-run` with no credentials: it reads `wrangler.jsonc` and `dist/` and checks the assets and bindings. It cannot see the account: whether Analytics Engine is enabled on it, or whether the API token has the permissions the deploy needs. Those fail only in the real deploy (see "Before the first deploy" in the README). Both use the one workflow-level `WRANGLER_VERSION`.
+- **The preflight.** The `check` job runs `wrangler deploy --dry-run` with no credentials: it reads `wrangler.jsonc` and `dist/` and checks the assets and bindings. It cannot see the account: whether Analytics Engine is enabled on it, or whether the API token has the permissions the deploy needs. Those fail only in the real deploy (see "Before the first deploy" in [deploy.md](deploy.md#automatic-deploy)). Both use the one workflow-level `WRANGLER_VERSION`.
 - **The environment.** The deploy job declares the `production` environment (a deployment history; a required reviewer can be added in the repository settings). It runs one at a time, is never cancelled halfway, holds the Cloudflare secrets only in its deploy step's env, and after the deploy only reads the live site (`npm run verify:live -- --retries 10 --post-deploy`, so a manifest or header that differs from the build fails the job).
 - **The guard.** `npm run check:workflows` (in `npm run check`) parses the workflows and `.github/dependabot.yml` and fails when one of these properties goes: the needs, the `if` (push to master only, no `||` or `always()`), where secrets appear and the one-line step that holds them, read-only permissions, sha-pinned actions, the fast journeys on pull requests only, the dry run, `verify:live` with `--post-deploy` and no POST, the pinned Wrangler, timeouts, concurrency and the environment, no `continue-on-error`, the triggers (push to master and pull requests, never `pull_request_target`), a real deploy only in the deploy job, and the Dependabot groups and major ignore. A shape it cannot read is reported with the file and the rule, never a stack trace. It checks names and shapes, not logic: an `if` that can never be true, a step that never runs, or a shell bug passes it. `actionlint`, run by hand when the workflows change, covers syntax and shell.
