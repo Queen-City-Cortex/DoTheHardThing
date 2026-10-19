@@ -6,7 +6,7 @@ import { MOVE_TEXT, COPY_ESCAPE, restricted } from './helpers.mjs';
 // The src files outside the copy lint, each with its reason. Every other non-test .ts/.tsx file directly under src/ must be
 // in COPY_FILES (eslint.config.js), so dropping an entry or adding a file nobody listed fails the test below.
 const NOT_COPY_FILES = {
-  'src/copy.ts': 'the home of the copy: its entries are the text, checked by src/copy.test.ts (kinds, refs, the talk, and no sentence in fmt)',
+  'src/copy.ts': 'the home of the copy: its entries are the text, checked by src/copy/*.test.ts (kinds, refs, the talk, and no sentence in fmt)',
   'src/method.ts': 'the method rules, each with its talk source and quote, checked against the transcript by scripts/check-method-quotes.mjs',
   'src/vite-env.d.ts': 'type declarations only, no code and no text',
 };

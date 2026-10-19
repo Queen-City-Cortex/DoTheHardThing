@@ -1,4 +1,4 @@
-// The one way to find the talk transcript, for scripts/check-method-quotes.mjs and src/copy.test.ts.
+// The one way to find the talk transcript, for scripts/check-method-quotes.mjs and src/copy/talk.test.ts.
 // The transcript is not in the repo (the talk is someone else's content), so every check that needs it skips when none
 // is set: locally it runs, in CI it does not. A path that is set but cannot be read is an error, never a skip, so a typo
 // cannot turn the checks into a silent no-op. A transcript line starts with its timestamp in brackets: `[4:36] words`.
