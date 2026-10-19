@@ -18,6 +18,7 @@
   },
   "type": "module",
   "scripts": {
+    "prepare": "node scripts/install-hooks.mjs",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b",
@@ -26,6 +27,7 @@
     "check:dist": "node scripts/check-dist.mjs",
     "check:public-hygiene": "node scripts/check-public-hygiene.mjs",
     "check:text": "node scripts/check-text.mjs",
+    "check:file-size": "node scripts/check-file-size.mjs",
     "check:agents-md": "node scripts/check-agents-md.mjs",
     "check:quotes": "node scripts/check-method-quotes.mjs",
     "check:maps": "node scripts/check-maps.mjs",
