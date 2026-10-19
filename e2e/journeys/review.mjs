@@ -48,6 +48,9 @@ export const reviewJourneys = {
     await A(NEXT).focus(); await p.keyboard.press('Enter');
     await s.step('name-3', async () => { await expect(h1(p)).toHaveText(t('name.anxious')); await expect(p.getByRole('textbox')).toBeFocused(); await p.keyboard.type('Tax letter'); await p.keyboard.press('Enter'); });
     await A(t('twoQuestions')).focus(); await p.keyboard.press('Enter');
+    await A(BACK).focus(); await p.keyboard.press('Enter'); // Back from the first item reopens Name on its last step, its textbox focused
+    await s.step('back-to-name-3', async () => { await expect(h1(p)).toHaveText(t('name.anxious')); await expect(p.getByRole('textbox')).toBeFocused(); });
+    await A(t('twoQuestions')).focus(); await p.keyboard.press('Enter');
     await s.step('ask-1', async () => { await expect(h1(p)).toHaveText(/./); const f = await focused(p); if (f.tag !== 'H1') throw new Error('ask: ' + JSON.stringify(f)); await p.keyboard.press('Tab'); await expect(A(YES_LABEL).first()).toBeFocused(); await p.keyboard.press('Space'); await expect(A(YES_LABEL).first()).toHaveClass(/\bon\b/); });
     await p.locator('.q').nth(1).getByRole('button', { name: YES_LABEL }).click(); await A(NEXT).click();
     await s.step('ask-2-heading', async () => { const f = await focused(p); if (f.tag !== 'H1') throw new Error('ask item 2: ' + JSON.stringify(f)); });

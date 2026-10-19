@@ -150,6 +150,7 @@ export const firstVisitJourneys = {
       await p.getByRole('button', { name: t('none.again') }).click();
       await expect(h1(p)).toContainText('Tax letter');
       await expect(p.getByLabel(fmt.steps(2, 2))).toBeVisible();
+      await expect(h1(p)).toBeFocused(); // the screen change to Ask moves focus to its heading, as on every screen
       for (const q of [0, 1]) await expect(p.locator('.q').nth(q).getByRole('button', { name: NO, exact: true })).toHaveClass(/\bon\b/);
     });
     await s.step('back-inside-ask', async () => { // Back inside Ask still goes to the item before
