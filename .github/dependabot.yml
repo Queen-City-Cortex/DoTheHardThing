@@ -4,6 +4,8 @@ version: 2
 #   react and react-dom minor updates join the same weekly group.
 # - npm major bumps are ignored: a toolchain major (vitest, eslint, playwright, vite, typescript, react and the rest) is
 #   a deliberate upgrade pull request, done on a day the owner picks, never a surprise red `check`.
+# - eslint-plugin-react-hooks gets patch updates only: its recommended set holds the React Compiler rules, and a minor can
+#   add or tighten one that flags existing code, so a minor is a deliberate pull request too (package.json pins ~7.1.x).
 # Tradeoff: GitHub's documentation says an `ignore` entry in this file applies to security updates as well as version
 # updates (https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/manage-your-dependency-security/controlling-dependencies-updated),
 # so a security fix that exists only in a new major will not get a pull request from this file. Look at the repository's
@@ -20,6 +22,8 @@ updates:
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
+      - dependency-name: "eslint-plugin-react-hooks"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule:

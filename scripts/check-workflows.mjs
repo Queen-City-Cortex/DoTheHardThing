@@ -20,8 +20,9 @@
 //      wrangler`, or `wrangler` followed by a subcommand) uses it and none hard-codes `wrangler@<n>`
 //   h  every job has timeout-minutes (a number or a ${{ }} expression); deploy has a concurrency group with
 //      cancel-in-progress: false and an environment
-//   i  dependabot.yml: npm and github-actions each have a group covering minor and patch; npm ignores semver-major; a
-//      comment says "security" (an ignore also drops security updates, and the file must say so)
+//   i  dependabot.yml: npm and github-actions each have a group covering minor and patch; npm ignores semver-major, and
+//      semver-minor for eslint-plugin-react-hooks (a minor can add a React Compiler rule); a comment says "security"
+//      (an ignore also drops security updates, and the file must say so)
 //   j  no `continue-on-error` key anywhere in any workflow: it turns a red step or job green, so deploy's needs pass
 //   k  ci.yml runs `on:` exactly push (branches exactly [master]) and pull_request; no workflow file runs on
 //      pull_request_target (fork pull requests with this repository's secrets)
