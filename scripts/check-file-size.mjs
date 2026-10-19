@@ -66,6 +66,15 @@ export function isIgnored(path, rules) {
 
 /** True when one of the first lines marks the file as generated. */
 export const hasGeneratedHeader = (text) => text.split('\n', HEADER_LINES).some((l) => GENERATED.test(l));
+/** The bytes through the tenth newline (or the whole file when it has fewer), so the header scan is by lines, not by bytes. */
+export function headerBytes(buf) {
+  let end = -1;
+  for (let i = 0; i < HEADER_LINES; i++) {
+    end = buf.indexOf(10, end + 1);
+    if (end < 0) return buf;
+  }
+  return buf.subarray(0, end + 1);
+}
 /** A NUL byte in the first 8000 bytes: the same test git uses for binary. */
 export const looksBinary = (buf) => buf.subarray(0, 8000).includes(0);
 
@@ -159,7 +168,7 @@ export function findOffenders(cwd, entries, rules) {
   regular.forEach((e, i) => {
     if (!isOverLimit(sizes[i])) return;
     const blob = git(cwd, ['cat-file', 'blob', e.sha]);
-    if (looksBinary(blob) || hasGeneratedHeader(blob.subarray(0, 4096).toString('utf8'))) return;
+    if (looksBinary(blob) || hasGeneratedHeader(headerBytes(blob).toString('utf8'))) return;
     offenders.push({ path: e.path, bytes: sizes[i] });
   });
   return offenders;

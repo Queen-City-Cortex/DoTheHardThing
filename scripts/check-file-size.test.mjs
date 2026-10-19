@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
-import { formatReport, hasGeneratedHeader, isIgnored, isOverLimit, looksBinary, parseIgnore, tokensOf } from './check-file-size.mjs';
+import { formatReport, hasGeneratedHeader, headerBytes, isIgnored, isOverLimit, looksBinary, parseIgnore, tokensOf } from './check-file-size.mjs';
 import { HOOKS_DIR, installHooks } from './install-hooks.mjs';
 
 const REPO = fileURLToPath(new URL('..', import.meta.url));
@@ -59,6 +59,16 @@ describe('generated and binary detection', () => {
     expect(hasGeneratedHeader('line\n'.repeat(10) + '// @generated\n')).toBe(false);
     expect(hasGeneratedHeader('export const a = 1;\n')).toBe(false);
   });
+  it('scans through the tenth newline, not the first 4,096 bytes', () => {
+    const wide = `${'x'.repeat(5000)}\n`;
+    const late = Buffer.from(`${wide}// @generated\n${'y'.repeat(100)}`);
+    expect(hasGeneratedHeader(headerBytes(late).toString('utf8'))).toBe(true);
+    const tenth = Buffer.from(`${wide.repeat(9)}// DO NOT EDIT\nrest\n`);
+    expect(hasGeneratedHeader(headerBytes(tenth).toString('utf8'))).toBe(true);
+    const eleventh = Buffer.from(`${wide.repeat(10)}// @generated\n`);
+    expect(hasGeneratedHeader(headerBytes(eleventh).toString('utf8'))).toBe(false);
+    expect(headerBytes(Buffer.from('a\nb')).toString()).toBe('a\nb');
+  });
   it('treats a NUL byte as binary', () => {
     expect(looksBinary(Buffer.from([0x89, 0x50, 0x00, 0x47]))).toBe(true);
     expect(looksBinary(Buffer.from('plain text'))).toBe(false);
@@ -102,7 +112,7 @@ describe('the message', () => {
 });
 
 describe('install-hooks (prepare)', () => {
-  const run = (calls, answers = {}) => (args) => { calls.push(args.join(' ')); const a = answers[args[0] === 'config' && args[1] === '--local' && args[2] === '--get' ? 'get' : args[0]]; if (a instanceof Error) throw a; return a ?? ''; };
+  const run = (calls, answers = {}) => (args) => { calls.push(args.join(' ')); const a = answers[args[0] === 'config' && args.includes('--get') ? 'get' : args[0]]; if (a instanceof Error) throw a; return a ?? ''; };
   it('does nothing in CI', () => {
     const calls = [];
     expect(installHooks({ CI: 'true' }, run(calls))).toBe('skipped: CI');
@@ -122,6 +132,12 @@ describe('install-hooks (prepare)', () => {
     const other = [];
     expect(installHooks({}, run(other, { get: '.husky' }))).toBe('skipped: core.hooksPath is already .husky');
     expect(other.some((c) => c.startsWith('config --local core.hooksPath'))).toBe(false);
+  });
+  it('reads core.hooksPath from every config scope, so a global value is not overridden', () => {
+    const calls = [];
+    expect(installHooks({}, run(calls, { get: '/home/me/.config/git/hooks' }))).toBe('skipped: core.hooksPath is already /home/me/.config/git/hooks');
+    expect(calls).toContain('config --get core.hooksPath');
+    expect(calls.some((c) => c.includes('--local'))).toBe(false);
   });
 });
 
@@ -219,6 +235,7 @@ describe('the hook in a temporary git repository', () => {
     symlinkSync('a'.repeat(100), join(dir, 'link'));
     put(dir, 'src/api.ts', `// @generated\n${bytes(30_000)}`);
     put(dir, 'src/tools.generated.ts', bytes(30_000));
+    put(dir, 'src/wide.ts', `${'x'.repeat(5000)}\n// DO NOT EDIT\n${bytes(30_000)}`); // marker on line 2, past byte 4,096
     put(dir, 'public/icon.svg', bytes(30_000));
     git(dir, 'add', '.');
     const r = commit(dir);

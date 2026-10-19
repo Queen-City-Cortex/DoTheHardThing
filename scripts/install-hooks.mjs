@@ -1,6 +1,7 @@
 // prepare: point git at the tracked hooks in .githooks, so every contributor gets the pre-commit file size check after
 // `npm ci` or `npm install`. It never fails the install: it does nothing in CI, outside a git checkout (an npm tarball, a
-// `git archive` export), without git, or when core.hooksPath is already set to something else (it will not take that over).
+// `git archive` export), without git, or when core.hooksPath is already set to something else in any git config scope,
+// global included (it will not take that over, and says so).
 import { execFileSync } from 'node:child_process';
 import { existsSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -16,7 +17,7 @@ export function installHooks(env = process.env, run = git) {
     if (run(['rev-parse', '--show-prefix']) !== '') return 'skipped: not the top of a git checkout';
     if (!existsSync(HOOKS_DIR)) return `skipped: no ${HOOKS_DIR} directory`;
     let current = '';
-    try { current = run(['config', '--local', '--get', 'core.hooksPath']); } catch { /* unset */ }
+    try { current = run(['config', '--get', 'core.hooksPath']); } catch { /* unset */ }
     if (current === HOOKS_DIR) return 'already set';
     if (current) return `skipped: core.hooksPath is already ${current}`;
     run(['config', '--local', 'core.hooksPath', HOOKS_DIR]);
