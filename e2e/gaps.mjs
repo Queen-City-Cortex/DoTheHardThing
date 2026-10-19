@@ -1,4 +1,4 @@
-// Known-gaps runner. Every entry in e2e/known-gaps.json names a gap-* journey in drive.mjs that asserts the behavior we
+// Known-gaps runner. Every entry in e2e/known-gaps.json names a gap-* journey in e2e/journeys/gaps.mjs that asserts the behavior we
 // want, so it FAILS while the gap is open. For each entry this runs the journey and inverts the result:
 //   XFAIL    the journey failed with its own `gap open (N of M): ...` error and it contains `fails_with` (which carries
 //            the count): the gap is open, as registered (ok)
@@ -32,7 +32,7 @@ const now = new Date();
 const today = process.env.GAPS_TODAY ?? `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`; // the local date
 const args = process.argv.slice(2);
 const isDate = (d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(d));
-const GAP_OPEN = /^gap open \(\d+ of \d+\): \S/; // the start of the journey's own error, `gap open (N of M): ...`, from gapOpen() in drive.mjs
+const GAP_OPEN = /^gap open \(\d+ of \d+\): \S/; // the start of the journey's own error, `gap open (N of M): ...`, from gapOpen() in e2e/journeys/gaps.mjs
 const serve = args.includes('--serve');
 const ids = args.filter((a) => a !== '--serve');
 const fail = (msg) => { console.log(msg); process.exit(1); };

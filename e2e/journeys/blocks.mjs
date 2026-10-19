@@ -22,6 +22,27 @@ export const blocksJourneys = {
     const st = await s.store(); const d = st.days.at(-1);
     if (d.block?.endReason !== 'stopped' || d.didIt !== null) throw new Error('stored block not stopped or already answered: ' + JSON.stringify(d));
   }),
+  'drift-come-back': journey({ id: 'drift-come-back', feature: 'block-timer', proves: ['bt-drift', 'bt-end'], strings: ['block.comeBack', 'block.focus', 'block.drifted'] }, async (s) => { // the running block's Gently come back button swaps the line under the timer, stores a drift and survives a reload; the target time ends it as complete
+    const p = s.page;
+    await throughToPick(s); await startBlock(s);
+    await expect(p.getByText(t('block.focus'))).toBeVisible();
+    await expect(p.getByText(t('block.drifted'))).toHaveCount(0);
+    await p.clock.runFor('05:00');
+    await s.step('come-back', async () => { await p.getByRole('button', { name: t('block.comeBack') }).click(); });
+    await s.step('drifted-line', async () => {
+      await expect(p.getByText(t('block.drifted'))).toBeVisible();
+      await expect(p.getByText(t('block.focus'))).toHaveCount(0);
+      await expect(p.getByRole('timer')).toContainText('1:55:00'); // coming back does not touch the clock
+    });
+    let b = (await s.store()).days.at(-1).block;
+    if (b.drifts.length !== 1 || b.endedAt !== null) throw new Error('drift not stored once on a running block: ' + JSON.stringify(b));
+    await p.reload();
+    await s.step('reload-keeps-drifted-line', async () => { await expect(p.getByText(t('block.drifted'))).toBeVisible(); await expect(p.getByRole('timer')).toContainText('1:55:00'); });
+    await p.clock.runFor('01:55:01');
+    await expectClose(p);
+    b = (await s.store()).days.at(-1).block;
+    if (b.endReason !== 'complete' || b.drifts.length !== 1) throw new Error('target time did not end the block as complete with its drift kept: ' + JSON.stringify(b));
+  }),
   'short-block-yes-counts': journey({ id: 'short-block-yes-counts', feature: 'block-timer', proves: ['bt-end', 'cd-answer', 'cd-leftovers'], strings: ['block.end', 'name.pushed.hint'] }, async (s) => { // ending after 5 min and answering Yes counts the day: no verdict on the block, the item is done
     const p = s.page;
     await throughToPick(s); await startBlock(s);

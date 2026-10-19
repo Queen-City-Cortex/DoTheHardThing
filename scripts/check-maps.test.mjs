@@ -34,13 +34,13 @@ describe('check:maps', () => {
   it('passes the real tree and names the sub-features no journey can prove', () => {
     const r = spawnSync(process.execPath, [SCRIPT], { encoding: 'utf8', cwd: ROOT });
     expect(r.status, r.stderr).toBe(0);
-    expect(r.stdout).toMatch(/^maps OK: \d+ journeys, 9 maps$/m);
+    expect(r.stdout).toMatch(/^maps OK: \d+ journeys, 13 maps$/m);
     expect(r.stdout).toContain('not proved by any journey, as the map says ("not verified by vdt"): an-worker');
   });
   it('passes an unchanged copy', () => {
     const r = run();
     expect(r.status, r.out).toBe(0);
-    expect(r.out).toMatch(/maps OK: 56 journeys, 9 maps/);
+    expect(r.out).toMatch(/maps OK: 57 journeys, 13 maps/);
   });
   it('fails a renamed key whose meta.id was left behind', () => {
     const r = run(({ drive }) => drive("'two-tabs': journey({ id: 'two-tabs'", "'two-tabs-stale': journey({ id: 'two-tabs'"));

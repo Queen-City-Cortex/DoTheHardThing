@@ -5,7 +5,7 @@ However the block ended (ran out, ended early, broken by a long step-away, a 1h 
 ## Sub-features
 
 - `cd-question` eyebrow `Close the day`, heading `Did you do it?`, muted `“<item>”, your one thing today.` (curly quotes; `Your one thing today.` if no item is chosen), then `Yes` / `Not today` with nothing chosen. `Close today` is disabled until one is tapped. No blockquote, no `The full block ran.`, no block minutes.
-- `cd-never-verdict` the strings `a start, not a full block` and `got its block` never appear anywhere. Every Close journey asserts that (`noVerdict` in `drive.mjs`).
+- `cd-never-verdict` the strings `a start, not a full block` and `got its block` never appear anywhere. Every Close journey asserts that (`noVerdict` in `e2e/drive/actions.mjs`).
 - `cd-answer` `Yes` stores `didIt: true` and `doneText` = the chosen item's text; `Not today` stores `didIt: false`, `doneText: null`. Either can be switched before closing; the chosen one carries the `on` class.
 - `cd-lines` after an answer: an italic note, a rule, the count line, and a `See your days` link button. The copy comes from `closeLines` in `src/logic.ts`:
   - first Yes ever: note `That's your first one. Nothing else to add.`, line `Your first day. It starts here.` (no number at all)
