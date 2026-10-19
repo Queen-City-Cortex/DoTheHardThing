@@ -135,7 +135,7 @@ describe('install-hooks (prepare)', () => {
   });
   it('reads core.hooksPath from every config scope, so a global value is not overridden', () => {
     const calls = [];
-    expect(installHooks({}, run(calls, { get: '/home/me/.config/git/hooks' }))).toBe('skipped: core.hooksPath is already /home/me/.config/git/hooks');
+    expect(installHooks({}, run(calls, { get: 'global-hooks' }))).toBe('skipped: core.hooksPath is already global-hooks');
     expect(calls).toContain('config --get core.hooksPath');
     expect(calls.some((c) => c.includes('--local'))).toBe(false);
   });
