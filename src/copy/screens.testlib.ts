@@ -3,7 +3,7 @@
 import { vi } from 'vitest';
 import { createElement as h } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { REQUIRED } from '../copy';
+import { REQUIRED } from './required';
 import { About, Ask, BlockView, Close, Closed, Days, Name, Pick, Welcome } from '../App';
 import * as L from '../logic';
 

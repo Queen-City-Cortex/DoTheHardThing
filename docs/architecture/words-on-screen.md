@@ -17,3 +17,22 @@ Each entry has a kind, like the rules in `method.ts`: `quote` (the talk word for
 - **Q1, the late cutoff.** The Welcome screen treats opening at or after 11:00 as a late start; the Pick screen shows its late line from 12:00. Both are kept as they were. Choosing one hour means deleting the `@ts-expect-error` line in `src/method.ts` and merging `LATE_CUTOFFS` into one value.
 - **A trace of the cited transcript lines.** Committing the few transcript lines the quotes cite (about 8) would let CI check the quotes too. It is the owner's call whether verbatim lines of the talk belong in a public MIT repository; until then the quote checks are local only. A committed trace would also need its own guard, since CI could not tell a hand-edited trace from the talk.
 - **The hour line on a late first visit.** The first welcome shows "Ideally an hour before email or screens." at any hour, also after the 11:00 cutoff where a returning welcome drops it. It was added to the first welcome unconditionally in an earlier change; before that a late first visit had no hour line. The required-lines test keeps today's behavior (`firstWelcomeLate` in `REQUIRED`); whether it is intended is open.
+
+### Notes that sat at the top of `src/copy.ts`
+
+`src/copy/talk.test.ts` checks the quotes and refs against the transcript where FERRISS_TRANSCRIPT points at one (the transcript
+is not in the repo), and checks kinds, ref shapes and the REQUIRED lines everywhere.
+fmt holds no talk words: a line from the talk is an entry with a kind. A line with a value in it is an entry with a
+{placeholder} that fmt fills through fill(), and `src/copy/kinds-and-refs.test.ts` fails on any literal of four or more words in fmt.
+
+Some ids are named for one screen and show on others too (the no-duplicate-text test makes them share one entry), so a
+wording change there moves every place: close.yes is also Ask's Yes, pick.eyebrow is also Ask's last button,
+twoQuestions is the last Name button and the Ask eyebrow, yourOneThing is the block eyebrow and the Your days stand-in
+for a done day with no text, and back, next, about, done, yourDays and no show on more than one screen.
+
+Bundle cost: the ids, kinds and refs ship to the browser with the text (about 1.5 KB gzip for 142 entries). If the
+table keeps growing, build a text-only map at build time.
+
+The first paragraph of that header, moved here: Every word the app shows, in one place: the Welcome (first visit, returning morning, late start, missed days), Name, Ask, Pick (and "Nothing got a yes"), block, Close, Closed, Your days and About screens, the header, the save note, the notifications, and the labels logic.ts builds (tags, day counts, the reminder status). App.tsx, logic.ts and reminder.ts render or return words only through t(id), fmt and the constants here, and the journeys (e2e/drive.mjs) import this file, so a wording change here moves the app and its assertions together.
+
+The comment above `COPY` in `src/copy.ts`, moved here: Judgment calls on kind: `first.step2` and `block.comeBack` are quotes of fragments ("so you got to pick one thing", "just gently come back to your one to-do."), `close.good` and `closed.slide` are paraphrases ("That's the whole thing."; the talk says "they'll", not "It'll"), and the Name, block and About calls are noted at each entry.

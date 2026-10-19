@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { REQUIRED, t } from '../copy';
+import { t } from '../copy';
+import { REQUIRED } from './required';
 import { SCREENS } from './screens.testlib';
 
 describe('required lines are on their screens', () => {
