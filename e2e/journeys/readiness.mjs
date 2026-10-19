@@ -1,6 +1,6 @@
 import { expect } from '@playwright/test';
-import { t } from '../../src/copy.ts';
-import { NEXT, BACK, DONE, ABOUT, ADD, h1, row, addItem, answerAll, FIRST_H1, READY, PUSHED_Q, throughToPick, startBlock, YES, CLOSE_TODAY, SEE_DAYS, NOTE, FIRST_DAY, expectClose, answer, closeToday, newDayAt } from '../drive/actions.mjs';
+import { fmt, t } from '../../src/copy.ts';
+import { NEXT, BACK, DONE, ABOUT, ADD, SKIP, NO, YES_LABEL, h1, row, addItem, answerAll, FIRST_H1, READY, PUSHED_Q, throughToPick, startBlock, YES, CLOSE_TODAY, SEE_DAYS, NOTE, FIRST_DAY, expectClose, answer, closeToday, newDayAt } from '../drive/actions.mjs';
 import { journey } from '../drive/registry.mjs';
 import { noPageErrors } from './analytics.mjs';
 
@@ -130,6 +130,31 @@ export const readinessJourneys = {
       await p.getByRole('button', { name: READY }).click(); await expect(h1(p)).toHaveText(PUSHED_Q);
       await expect(row(p, 'Talking to leads')).toBeVisible(); await expect(p.getByText('typed but not added')).toHaveCount(0);
     });
+  }),
+  'reload-mid-ask': journey({ id: 'reload-mid-ask', feature: 'resilience', proves: ['rs-reload-mid-ask'], strings: ['twoQuestions', 'name.risky'] }, async (s) => { // nor during Ask: a reload on Ask item 2 returns to Welcome, the items and the answers given are kept, and Ask opens on its first item again
+    const p = s.page;
+    await s.step('ask-item-2', async () => {
+      await p.getByRole('button', { name: READY }).click(); await p.getByRole('button', { name: SKIP }).click();
+      await expect(h1(p)).toHaveText(t('name.risky'));
+      await addItem(p, 'Ask for the raise'); await p.getByRole('button', { name: NEXT }).click();
+      await addItem(p, 'Tax letter'); await p.getByRole('button', { name: t('twoQuestions') }).click();
+      const qs = p.locator('.q');
+      await qs.nth(0).getByRole('button', { name: YES_LABEL, exact: true }).click(); await qs.nth(1).getByRole('button', { name: NO, exact: true }).click();
+      await p.getByRole('button', { name: NEXT }).click();
+      await expect(p.getByLabel(fmt.steps(2, 2))).toBeVisible(); await expect(h1(p)).toContainText('Tax letter');
+    });
+    await s.step('reload', async () => { await p.reload(); await expect(h1(p)).toHaveText(FIRST_H1); });
+    await s.step('ready-again', async () => {
+      await p.getByRole('button', { name: READY }).click(); await expect(h1(p)).toHaveText(PUSHED_Q);
+      await expect(row(p, 'Ask for the raise')).toBeVisible(); await expect(row(p, 'Tax letter')).toBeVisible();
+    });
+    await s.step('ask-again', async () => {
+      await p.getByRole('button', { name: NEXT }).click(); await p.getByRole('button', { name: NEXT }).click(); await p.getByRole('button', { name: t('twoQuestions') }).click();
+      await expect(p.getByLabel(fmt.steps(1, 2))).toBeVisible(); await expect(h1(p)).toContainText('Ask for the raise');
+      await expect(p.locator('.q').nth(0).getByRole('button', { name: YES_LABEL, exact: true })).toHaveClass(/\bon\b/);
+    });
+    const items = (await s.store()).days.at(-1).items.map((i) => [i.text, i.satisfied, i.leverage]);
+    if (JSON.stringify(items) !== JSON.stringify([['Ask for the raise', true, false], ['Tax letter', null, null]])) throw new Error('items or answers lost after the reload: ' + JSON.stringify(items));
   }),
   'storage-blocked': journey({ id: 'storage-blocked', feature: 'resilience', proves: ['rs-storage-blocked'], strings: ['saveNote', 'twoQuestions'] }, async (s) => { // storage refuses writes (private mode, full disk): a visible note, nothing crashes, the day can still be worked in memory
     const p = s.page;

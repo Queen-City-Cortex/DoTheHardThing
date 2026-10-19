@@ -1,6 +1,6 @@
 import { expect } from '@playwright/test';
 import { fmt, t } from '../../src/copy.ts';
-import { NEXT, BACK, DONE, ABOUT, NO, YES_LABEL, SKIP, h1, addItem, rx, READY, PUSHED_Q, throughToPick, startBlock, YES, SEE_DAYS, NOTE, FIRST_DAY, expectClose, answer, closeToday, newDayAt, DAYS_H1, expectFraming, expectLateOnlyWelcome, expectWelcomeBack } from '../drive/actions.mjs';
+import { NEXT, BACK, DONE, ABOUT, NO, YES_LABEL, SKIP, h1, addItem, READY, throughToPick, startBlock, YES, SEE_DAYS, NOTE, FIRST_DAY, expectClose, answer, closeToday, newDayAt, DAYS_H1, expectFraming, expectLateOnlyWelcome, expectWelcomeBack } from '../drive/actions.mjs';
 import { journey } from '../drive/registry.mjs';
 
 // ---- blind spots: behaviors that only a journey can see, each found by a mutation that every other journey let through ----
@@ -23,7 +23,6 @@ async function expectPickLine(p, late) {
 }
 export const ASK_YES = (p, q) => p.locator('.q').nth(q).getByRole('button', { name: YES_LABEL, exact: true });
 const ASK_NO = (p, q) => p.locator('.q').nth(q).getByRole('button', { name: NO, exact: true });
-const NAME_STEPS = [PUSHED_Q, t('name.risky'), t('name.anxious')];
 export const blindSpotJourneys = {
   'close-first-day-after-nav': journey({ id: 'close-first-day-after-nav', feature: 'close-day', proves: ['cd-lines'], strings: ['close.firstCount', 'close.first', 'close.hero', 'yourDays'] }, async (s) => { // the first-day line stays on Close after Your days (Back or Done) and About, with Yes still on
     const p = s.page;
@@ -80,8 +79,9 @@ export const blindSpotJourneys = {
     });
     await s.step('back-to-name', async () => {
       await p.getByRole('button', { name: BACK }).click();
-      // which Name step opens is a known gap (back-lands-on-first-substep in e2e/known-gaps.json), so any of the three
-      await expect(h1(p)).toHaveText(new RegExp(`^(${NAME_STEPS.map(rx).join('|')})$`));
+      // Name opens on its last step, the anxious one the user came from (back-to-last-substep in first-visit.md)
+      await expect(h1(p)).toHaveText(t('name.anxious'));
+      await expect(p.getByLabel(fmt.steps(3, 3))).toBeVisible();
       await expect(p.getByRole('textbox')).toBeVisible();
     });
     const items = (await s.store()).days.at(-1).items.map((i) => [i.text, i.satisfied, i.leverage]);

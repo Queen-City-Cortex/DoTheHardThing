@@ -19,8 +19,8 @@ export const close = (didIt: boolean | null, total: number) => text(h(Close, { d
 export const closed = (didIt: boolean) => text(h(Closed, { didIt, onDays: noop, onStartOver: noop }));
 // Name renders its first step (the later steps need a click); `history` brings leftovers from yesterday
 export const yesterday = day([item('Old letter', null, ['risky'], 1), item('Gym', null, ['pushed', 'anxious'])], { date: '2026-10-13', didIt: false });
-export const name = (items: L.Item[], history: L.Day[] = []) => text(h(Name, { day: day(items), history, today: '2026-10-14', upd: noop, onBack: noop, onNext: noop }));
-export const ask = (items: L.Item[]) => text(h(Ask, { items, setItem: noop, onBack: noop, onDone: noop }));
+export const name = (items: L.Item[], history: L.Day[] = []) => text(h(Name, { day: day(items), history, today: '2026-10-14', opensAt: 'first', upd: noop, onBack: noop, onNext: noop }));
+export const ask = (items: L.Item[]) => text(h(Ask, { items, opensAt: 'first', setItem: noop, onBack: noop, onDone: noop }));
 export const T0 = 1_000_000;
 export const blk = (p: Partial<L.Block> = {}): L.Block => ({ ...L.startBlock(120, T0), ...p });
 export const block = (b: L.Block, it?: L.Item, now = T0 + 5 * 60_000) => text(h(BlockView, { block: b, item: it, now, act: noop }));

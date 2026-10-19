@@ -13,28 +13,28 @@ describe('Name, Ask, the block, Your days and About render their copy in every s
   it('Name: the step, its placeholder, the list with its remove labels, and the next button', () => {
     const empty = name([]);
     expect(empty).toContain(t('name.eyebrow'));
-    expect(renderToStaticMarkup(h(Name, { day: day([]), history: [], today: '2026-10-14', upd: noop, onBack: noop, onNext: noop }))).toContain(`aria-label="${fmt.steps(1, 3)}"`);
+    expect(renderToStaticMarkup(h(Name, { day: day([]), history: [], today: '2026-10-14', opensAt: 'first', upd: noop, onBack: noop, onNext: noop }))).toContain(`aria-label="${fmt.steps(1, 3)}"`);
     expect(empty).toContain(t('name.placeholder'));
     expect(empty).toContain(t('name.skip'));
     expect(empty).not.toContain(t('next'));
-    const listed = renderToStaticMarkup(h(Name, { day: day(twoItems), history: [], today: '2026-10-14', upd: noop, onBack: noop, onNext: noop }));
+    const listed = renderToStaticMarkup(h(Name, { day: day(twoItems), history: [], today: '2026-10-14', opensAt: 'first', upd: noop, onBack: noop, onNext: noop }));
     expect(listed).toContain(`aria-label="${fmt.remove('Call mom')}"`);
     expect(listed).toContain(`aria-label="${t('name.pushed')}"`);
-    expect(text(h(Name, { day: day(twoItems), history: [], today: '2026-10-14', upd: noop, onBack: noop, onNext: noop }))).toContain(`${t('tag.risky')} · ${fmt.pushedTimes(2)}`);
+    expect(text(h(Name, { day: day(twoItems), history: [], today: '2026-10-14', opensAt: 'first', upd: noop, onBack: noop, onNext: noop }))).toContain(`${t('tag.risky')} · ${fmt.pushedTimes(2)}`);
     expect(name(twoItems)).toContain(t('next'));
-    expect(renderToStaticMarkup(h(Name, { day: day(five), history: [], today: '2026-10-14', upd: noop, onBack: noop, onNext: noop }))).toContain(`placeholder="${t('name.placeholderFull')}"`);
+    expect(renderToStaticMarkup(h(Name, { day: day(five), history: [], today: '2026-10-14', opensAt: 'first', upd: noop, onBack: noop, onNext: noop }))).toContain(`placeholder="${t('name.placeholderFull')}"`);
   });
   it('Name with leftovers: each one offered with its tags, and the other placeholder', () => {
     const offered = name([], [yesterday]);
     expect(offered).toContain(`${t('tag.risky')} · ${fmt.pushedTimes(2)}`);
     expect(offered).toContain(`${t('tag.anxious')} · ${fmt.pushedTimes(1)}`);
-    expect(renderToStaticMarkup(h(Name, { day: day([]), history: [yesterday], today: '2026-10-14', upd: noop, onBack: noop, onNext: noop }))).toContain(`placeholder="${t('name.placeholderNew')}"`);
+    expect(renderToStaticMarkup(h(Name, { day: day([]), history: [yesterday], today: '2026-10-14', opensAt: 'first', upd: noop, onBack: noop, onNext: noop }))).toContain(`placeholder="${t('name.placeholderNew')}"`);
     expect(name([])).not.toContain(t('name.leftovers'));
   });
   it('Ask: the item, both questions, Yes and No, and Pick one on the last item', () => {
     const one = ask([item('Tax letter', true, ['anxious'])]);
     for (const id of ['twoQuestions', 'ask.satisfied', 'ask.leverage', 'close.yes', 'no', 'back', 'pick.eyebrow'] as const) expect(one).toContain(t(id));
-    expect(renderToStaticMarkup(h(Ask, { items: [item('Tax letter', true)], setItem: noop, onBack: noop, onDone: noop }))).toContain(`aria-label="${fmt.steps(1, 1)}"`);
+    expect(renderToStaticMarkup(h(Ask, { items: [item('Tax letter', true)], opensAt: 'first', setItem: noop, onBack: noop, onDone: noop }))).toContain(`aria-label="${fmt.steps(1, 1)}"`);
     expect(ask(twoItems)).toContain(t('next'));
     expect(ask([])).toBe('');
   });
