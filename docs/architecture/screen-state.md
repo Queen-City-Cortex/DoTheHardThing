@@ -33,7 +33,7 @@ The tests in `src/state.property/` (shared pieces in `*.testlib.ts`, one file pe
 ## Limits
 
 - The step-by-step comparison proves the reducer equals a model of the old App.tsx, written from its code, not the old App.tsx itself: a mistake in the model would hide a behavior change. The journeys drive the real build.
-- The lint keeping `state.ts` pure is a tripwire, not a wall (see the known gaps in `scripts/boundaries.test.mjs`).
+- The lint keeping `state.ts` pure is a tripwire, not a wall (see the known gaps in `scripts/boundaries/fine-snippets.mjs` (GAPS)).
 - `small` is compared only while planning: the reducer drops it once a block starts, the old App kept it through the block, Close and Closed, and every way back to planning reset it. A future way back to Pick would have to decide.
 - Still open (BG-1), a product call and not changed here: a reload in the middle of Name loses its step and draft, and in Ask its item; Back from Pick or Ask lands on the first sub-step. Both are component state in `App.tsx` today. The union makes either fix small: add `phase` to `Name` and `idx` to `Ask`.
 

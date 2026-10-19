@@ -7,7 +7,7 @@ import tseslint from 'typescript-eslint'
 // Module map: each platform API has exactly one owner module. Everything else in src/ goes through the owner.
 // ESLint keeps only the last config's options for a rule name, so every file's no-restricted-* rules are built here from
 // one table by boundaries(). Do not add another block that sets these four rules for src/ or worker/: it would replace
-// the generated bans for those files. scripts/boundaries.test.mjs checks what the rules catch.
+// the generated bans for those files. scripts/boundaries/*.test.mjs checks what the rules catch.
 const WRAPPERS = ['window', 'globalThis', 'self'] // window.localStorage, globalThis.Notification, self['localStorage']
 const OWNERS = {
   storage: {
@@ -80,7 +80,7 @@ const METHOD_SYNTAX = [
 // The lint judges each literal part on its own. Still not caught: strings of one to three words ('Start', 'Not today'),
 // a sentence built by joining short pieces (concatenation, an array `.join(' ')`), a template whose literal parts each
 // have three words or fewer (`${n} days you have`), and text in a file not listed here (copy.ts itself, method.ts with
-// its talk quotes, tests). scripts/boundaries.test.mjs fails when a listed file no longer exists, and when this list is
+// its talk quotes, tests). scripts/boundaries/app-copy.test.mjs fails when a listed file no longer exists, and when this list is
 // not every non-test .ts/.tsx file directly under src/ minus its NOT_COPY_FILES (copy.ts, method.ts, vite-env.d.ts,
 // each with its reason), so a rename, a removal or a new file cannot change what the rule covers without a test saying so.
 export const COPY_FILES = ['src/App.tsx', 'src/main.tsx', 'src/logic.ts', 'src/reminder.ts', 'src/storage.ts', 'src/analytics.ts', 'src/clock.ts', 'src/decode.ts', 'src/events.ts', 'src/state.ts']
@@ -147,7 +147,7 @@ export default tseslint.config(
   {
     // the check scripts and the journey runner run in Node (older scripts and journeys evaluate browser code inside page.evaluate and are not linted yet)
     extends: [js.configs.recommended],
-    files: ['scripts/check*.mjs', 'scripts/check*/*.mjs', 'scripts/install-hooks.mjs', 'scripts/headers-policy.mjs', 'scripts/transcript.mjs', 'scripts/verify-live.mjs', 'scripts/**/*.test.mjs', 'e2e/run.mjs', 'e2e/csp-watch.mjs'],
+    files: ['scripts/check*.mjs', 'scripts/check*/*.mjs', 'scripts/boundaries/*.mjs', 'scripts/install-hooks.mjs', 'scripts/headers-policy.mjs', 'scripts/transcript.mjs', 'scripts/verify-live.mjs', 'scripts/**/*.test.mjs', 'e2e/run.mjs', 'e2e/csp-watch.mjs'],
     languageOptions: { ecmaVersion: 2023, sourceType: 'module', globals: globals.node },
   },
   { files: ['src/**/*.tsx'], ignores: TESTS, rules: boundaries({ ui: true }) },
