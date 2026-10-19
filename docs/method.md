@@ -33,6 +33,6 @@ More screens (close the day, About, a returning bad day, dark mode) are in [`doc
 ## Credit
 
 
-The method is Tim Ferriss's: his morning approach to efficacy (doing the right thing, rather than efficiency), condensed here from eight steps to three. See [his post on X](https://x.com/tferriss/status/2110445158206447830), which links the short talk.
+The method is Tim Ferriss's: his morning approach to efficacy (doing the right thing, rather than efficiency), condensed here from eight steps to three. See [his post on X](https://x.com/tferriss/status/2110445158206447830), which contains the short talk.
 
 Do The Hard Thing is an independent project. It is not affiliated with or endorsed by Tim Ferriss. The one-pause allowance inside a block and the shorter block offered after missed days or a late start are this app's own additions, not part of his method.
