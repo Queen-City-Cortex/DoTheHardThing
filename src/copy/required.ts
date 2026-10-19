@@ -14,11 +14,14 @@ const ABOUT_STATES = {
 const FIRST_WELCOME = ['first.hero', 'first.step1.d', 'first.step2.d', 'first.step3.d', 'first.source', 'talk.link', 'welcome.hour', 'first.assure'] as const;
 export const REQUIRED = {
   firstWelcome: FIRST_WELCOME,
-  // a first visit after the welcomeFraming cutoff is still the first welcome, hour line included
+  // a first visit after the late cutoff is still the first welcome, hour line included
   firstWelcomeLate: FIRST_WELCOME,
   morningWelcome: ['morning.hero', 'morning.email', 'morning.takes', 'welcome.hour'],
-  lateWelcome: ['bad.hero', 'bad.late', 'bad.everybody', 'bad.vonnegut', 'bad.notAlone', 'bad.shorter'],
-  missedWelcome: ['bad.hero', 'bad.missed', 'bad.everybody', 'welcome.hour', 'bad.shorter'],
+  // late with no missed days: the milder welcome (src/copy/late-welcome.test.ts checks what it leaves out)
+  lateWelcome: ['welcome.eyebrow.late', 'bad.late', 'bad.shorter'],
+  missedWelcome: ['bad.hero', 'bad.missed', 'bad.everybody', 'bad.vonnegut', 'bad.notAlone', 'welcome.hour', 'bad.shorter'],
+  // missed days and late: the full welcome back, with the late eyebrow and no hour line
+  missedWelcomeLate: ['welcome.eyebrow.late', 'bad.hero', 'bad.missed', 'bad.everybody', 'bad.vonnegut', 'bad.notAlone', 'bad.shorter'],
   nothingPicked: ['none.hero', 'none.useful', 'guise'],
   pick: ['pick.hero', 'pick.ten', 'pick.full', 'pick.slide'],
   close: ['close.hero', 'close.noItem'],

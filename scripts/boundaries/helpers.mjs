@@ -36,7 +36,7 @@ export const LOGIC_PURE = 'src/logic.ts is pure: it may import only ./method, ./
 export const STATE_PURE = 'src/state.ts is pure: it may import only ./logic and no DOM. Take the value as an argument; the caller gets it from now()/today() in src/clock.ts';
 export const MOVE_TEXT = "Move this text to src/copy.ts and render it with t(id); a talk quote needs kind: 'quote' and its transcript timestamp as ref.";
 export const COPY_ESCAPE = 'Not words a person reads (a class list, an event name)? Disable this rule on that one line with the reason.';
-export const HOURS = "Late-hour cutoffs are method rules (PRODUCT QUESTION Q1, see docs/architecture.md): use isLate(t, 'welcomeFraming' | 'pickWarning') from src/clock.ts. The hours live in LATE_CUTOFFS in src/method.ts.";
+export const HOURS = "The late cutoff is a method rule (see docs/architecture/methods-rules.md): use isLate(t) from src/clock.ts, or lateAt(hour) from src/method.ts in pure code. The hour lives in LATE_CUTOFF in src/method.ts.";
 export const RULE_NUMBER = 'Method numbers live in src/method.ts (RULES). Import the named constant (for example BLOCK_CHOICES, MAX_ITEMS, BREAK_LIMIT_MS) instead of writing the number here.';
 export const ESCAPE = 'Not a method number? Name it as a constant and disable this rule on that one line with the reason.';
 export const OWNER_IMPORT = (f) => `${f} may import only `;

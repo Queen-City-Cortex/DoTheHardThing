@@ -61,12 +61,12 @@ export const blocksJourneys = {
       await expect(p.getByText(t('name.pushed.hint'))).toBeVisible(); // nothing left over
     });
   }),
-  'small-block-modified': journey({ id: 'small-block-modified', feature: 'returning-user', proves: ['ru-small', 'ps-small'], strings: ['bad.hero', 'bad.shorter', 'pick.smallNote'] }, async (s) => { // day 1 ritual, day 2 at 14:00 picks the shorter option; the 1h block ends, Not today keeps the item for tomorrow
+  'small-block-modified': journey({ id: 'small-block-modified', feature: 'returning-user', proves: ['ru-small', 'ps-small'], strings: ['bad.late', 'bad.shorter', 'pick.smallNote'] }, async (s) => { // day 1 ritual, day 2 at 14:00 picks the shorter option; the 1h block ends, Not today keeps the item for tomorrow
     const p = s.page;
     await throughToPick(s);
     await p.clock.setSystemTime(new Date('2026-10-15T14:00:00')); await p.reload();
     await s.step('toggle-shorter', async () => {
-      await expect(h1(p)).toHaveText(t('bad.hero'));
+      await expect(h1(p)).toHaveText(t('bad.late')); // late with no missed days: the milder welcome, toggle included
       await p.getByRole('checkbox', { name: t('bad.shorter') }).check();
     });
     await throughToPick(s);

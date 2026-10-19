@@ -19,7 +19,7 @@ Each platform API has one owner module in `src/`. Every other module calls the o
 | Owner | Owns | Others use |
 | --- | --- | --- |
 | `storage.ts` | `localStorage`, parsing stored JSON (through `decode.ts`) | `load`, `save`, `refresh`, `kv()` and `readSmall()` for a small key |
-| `clock.ts` | `Date.now()` and `new Date()` with no argument | `now()`, `today()`, `isLate(t, cutoff)`; pass the number down |
+| `clock.ts` | `Date.now()` and `new Date()` with no argument | `now()`, `today()`, `isLate(t)`; pass the number down |
 | `reminder.ts` | `Notification`, `navigator.serviceWorker` | `askPermission`, `askPermissionIfUnasked`, `readPermission`, `notify`, `scheduleReminder` |
 
 `logic.ts`, `state.ts`, `method.ts`, `events.ts` and `copy.ts` are pure: they take every value as an argument (the time too), `logic.ts` imports only `method.ts` and `copy.ts` (and re-exports its reminder piece, `logic/reminder.ts`, which imports only `copy.ts`), `state.ts` only `logic.ts`, and the other three import nothing (`clock.ts` imports `logic.ts` and `method.ts`, never the other way; `reminder.ts` imports `copy.ts` for the notification's words). Each owner module imports only what its entry in `OWNER_IMPORTS` lists, `.ts` modules never import React, and the Worker imports only `events.ts` from the app. The `OWNERS` table in `eslint.config.js` turns this map into lint errors that name the function to call, and `scripts/boundaries/*.test.mjs` checks what those rules catch. Tests are exempt, since they stub the globals.

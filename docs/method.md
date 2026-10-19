@@ -18,7 +18,7 @@ More screens (close the day, About, a returning bad day, dark mode) are in [`doc
 - **Protect one block.** A 2, 2.5 or 3 hour countdown. One short step-away (under 10 minutes) is allowed; 10 minutes or more ends the block.
 - **Close the day.** "Did you do it?" is your own answer, Yes or Not today. There is no scoring.
 - **Your days.** A quiet history of the days you finished, with a count that only goes up.
-- **Gentle on bad days.** Returning after missed days or starting late (11:00 or later) lets you choose a shorter, modified block instead of a guilt trip.
+- **Gentle on bad days.** Returning after missed days or starting late (12:00 or later) lets you choose a shorter, modified block instead of a guilt trip. A late start with no missed days gets a short welcome ("Later start today." and the shorter-block choice); missed days get the full welcome back.
 - **Optional morning reminder** through the browser's notifications, if you allow them.
 - **Works offline and installs** to your home screen (service worker and web manifest). Light and dark themes follow your device.
 

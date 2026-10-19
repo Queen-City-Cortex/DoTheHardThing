@@ -5,13 +5,13 @@ import { BLOCK_CHOICES, BLOCK_MIN, SMALL_BLOCK_DEFAULT } from '../method';
 import { fmt, t } from '../copy';
 import { Chip } from './Name';
 
-// The late cutoffs live in LATE_CUTOFFS in src/method.ts: Welcome and Pick differ on purpose until PRODUCT QUESTION Q1 is decided.
+// The late cutoff is LATE_CUTOFF in src/method.ts, the same hour the Welcome uses.
 const hrs = (m: number) => (m % 60 ? `${(m / 60).toFixed(1).replace(/\.0$/, '')}h` : `${m / 60}h`).replace('1.5h', '1½h').replace('2.5h', '2½h');
 
 export function Pick({ day, small, upd, onBack, onStart }: { day: L.Day; small: boolean; upd: (p: { chosenId: string }) => void; onBack: () => void; onStart: (min: number) => void }) {
   const list = L.pickOrder(day.items);
   const [min, setMin] = useState<number>(small ? SMALL_BLOCK_DEFAULT : BLOCK_MIN);
-  const late = isLate(clockNow(), 'pickWarning');
+  const late = isLate(clockNow());
   if (!list.length) return (
     <section className="card">
       <h1>{t('none.hero')}</h1>

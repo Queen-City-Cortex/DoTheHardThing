@@ -2,7 +2,7 @@
 
 import { expect } from '@playwright/test';
 import { t } from '../../src/copy.ts';
-import { BACK, h1, FIRST_H1, READY, PUSHED_Q, STEP0_HINT, throughToPick, startBlock, noVerdict, SEE_DAYS, NOTE, FIRST_DAY, expectClose, answer, closeToday, expectFraming } from '../drive/actions.mjs';
+import { BACK, h1, FIRST_H1, READY, PUSHED_Q, STEP0_HINT, throughToPick, startBlock, noVerdict, SEE_DAYS, NOTE, FIRST_DAY, expectClose, answer, closeToday, expectFraming, expectLateOnlyWelcome } from '../drive/actions.mjs';
 import { journey, J } from '../drive/registry.mjs';
 
 export const closeAndReturnJourneys = {
@@ -88,16 +88,14 @@ export const closeAndReturnJourneys = {
     const d = (await s.store()).days.at(-1);
     if (d.closed || d.date !== kept.date) throw new Error('start over did not reset today: ' + JSON.stringify(d));
   }),
-  'returning-late': journey({ id: 'returning-late', feature: 'returning-user', proves: ['ru-late', 'ru-step0', 'ru-leftovers'], strings: ['block.end', 'bad.hero', 'bad.late', 'name.placeholderNew'] }, async (s) => { // day 1 morning real ritual, day 2 opened at 14:00
+  'returning-late': journey({ id: 'returning-late', feature: 'returning-user', proves: ['ru-late', 'ru-step0', 'ru-leftovers'], strings: ['block.end', 'bad.late', 'bad.shorter', 'name.placeholderNew'] }, async (s) => { // day 1 morning real ritual, day 2 opened at 14:00
     const p = s.page;
     await throughToPick(s); await startBlock(s);
     await p.getByRole('button', { name: t('block.end') }).click();
     await expectClose(p); await answer(p, false, NOTE.no, null); await closeToday(p, false);
     await p.clock.setSystemTime(new Date('2026-10-15T14:00:00')); await p.reload();
     await s.step('day2-late', async () => {
-      await expect(h1(p)).toHaveText(t('bad.hero'));
-      await expect(p.getByText(t('bad.late'))).toBeVisible();
-      await expectFraming(p, true);
+      await expectLateOnlyWelcome(p); // late with no missed days: the milder welcome
       await expect(p.getByRole('checkbox', { name: /shorter block.*modified practice/ })).toBeVisible();
     });
     await s.step('leftovers', async () => {

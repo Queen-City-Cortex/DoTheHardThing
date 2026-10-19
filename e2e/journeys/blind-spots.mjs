@@ -1,6 +1,6 @@
 import { expect } from '@playwright/test';
 import { fmt, t } from '../../src/copy.ts';
-import { NEXT, BACK, DONE, ABOUT, NO, YES_LABEL, SKIP, h1, addItem, rx, READY, PUSHED_Q, throughToPick, startBlock, YES, SEE_DAYS, NOTE, FIRST_DAY, expectClose, answer, closeToday, newDayAt, DAYS_H1, expectFraming } from '../drive/actions.mjs';
+import { NEXT, BACK, DONE, ABOUT, NO, YES_LABEL, SKIP, h1, addItem, rx, READY, PUSHED_Q, throughToPick, startBlock, YES, SEE_DAYS, NOTE, FIRST_DAY, expectClose, answer, closeToday, newDayAt, DAYS_H1, expectFraming, expectLateOnlyWelcome, expectWelcomeBack } from '../drive/actions.mjs';
 import { journey } from '../drive/registry.mjs';
 
 // ---- blind spots: behaviors that only a journey can see, each found by a mutation that every other journey let through ----
@@ -87,35 +87,36 @@ export const blindSpotJourneys = {
     const items = (await s.store()).days.at(-1).items.map((i) => [i.text, i.satisfied, i.leverage]);
     if (JSON.stringify(items) !== JSON.stringify([['Ask for the raise', true, false], ['Tax letter', false, true]])) throw new Error('items or answers lost after Back: ' + JSON.stringify(items));
   }),
-  'late-cutoffs': journey({ id: 'late-cutoffs', feature: 'returning-user', proves: ['ru-late-cutoffs', 'ps-block-copy'], strings: ['morning.hero', 'bad.hero', 'bad.late'] }, async (s) => { // the two late cutoffs as they are today: Welcome turns late at 11:00, Pick's line at 12:00
+  'late-cutoffs': journey({ id: 'late-cutoffs', feature: 'returning-user', proves: ['ru-late-cutoffs', 'ps-block-copy'], strings: ['morning.hero', 'bad.late', 'bad.hero', 'bad.missed'] }, async (s) => { // the one late cutoff, 12:00, for the Welcome and for Pick's line
     const p = s.page;
     await throughToPick(s);
-    await newDayAt(p, '2026-10-15T10:59:00');
-    await s.step('1059-morning', async () => {
+    await newDayAt(p, '2026-10-15T11:59:00');
+    await s.step('1159-morning', async () => {
       await expect(h1(p)).toHaveText(t('morning.hero'));
       await expectFraming(p, false);
       await p.getByRole('button', { name: READY }).click(); await addItem(p, 'Call mom'); // content on 10-15, so 10-16 is not a missed day
     });
-    await newDayAt(p, '2026-10-16T11:00:00');
-    await s.step('1100-late', async () => {
-      await expect(h1(p)).toHaveText(t('bad.hero'));
-      await expect(p.getByText(t('bad.late'))).toBeVisible();
-      await expectFraming(p, true);
-      await p.getByRole('button', { name: READY }).click(); await addItem(p, 'Call dad'); // content on 10-16, so 10-17 is late, not missed
+    await newDayAt(p, '2026-10-16T12:00:00');
+    await s.step('1200-late', async () => {
+      await expectLateOnlyWelcome(p);
+      await p.getByRole('button', { name: READY }).click(); await addItem(p, 'Call dad'); // content on 10-16, so 10-17 is not a missed day
     });
-    await newDayAt(p, '2026-10-17T11:30:00');
-    await s.step('1130-late', async () => {
-      await expect(h1(p)).toHaveText(t('bad.hero'));
-      await expect(p.getByText(t('bad.late'))).toBeVisible();
-      await expectFraming(p, true);
+    await newDayAt(p, '2026-10-17T11:59:00');
+    await s.step('1159-morning-again', async () => {
+      await expect(h1(p)).toHaveText(t('morning.hero'));
+      await expectFraming(p, false);
     });
     await throughToPick(s);
-    await s.step('1130-pick-morning-line', async () => { await expectPickLine(p, false); });
-    await p.clock.runFor('30:00'); // 12:00: Pick reads the hour when it draws, so choosing an item shows the change
+    await s.step('1159-pick-morning-line', async () => { await expectPickLine(p, false); });
+    await p.clock.runFor('01:00'); // 12:00: Pick reads the hour when it draws, so choosing an item shows the change
     await s.step('1200-pick-late-line', async () => {
       await p.getByRole('button', { name: /Ask for the raise/ }).click();
       await expectPickLine(p, true);
     });
+    await newDayAt(p, '2026-10-19T08:00:00'); // 10-18 missed
+    await s.step('missed-morning', async () => { await expectWelcomeBack(p, false); });
+    await newDayAt(p, '2026-10-21T12:00:00'); // 10-19 was a peek, so still missed days (from 10-17): the full welcome back, late framing
+    await s.step('missed-late', async () => { await expectWelcomeBack(p, true); });
   }),
   'pick-default-length': journey({ id: 'pick-default-length', feature: 'pick-and-start', proves: ['ps-default-length', 'ps-small'], strings: ['pick.start', 'bad.shorter', 'pick.smallNote'] }, async (s) => { // Start with no radio touched: 2h, or 1½h with the shorter-block toggle
     const p = s.page;

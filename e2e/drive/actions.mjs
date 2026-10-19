@@ -184,13 +184,36 @@ export async function nextMorningLeftover(s, at, label = 'next-morning-leftover'
   });
 }
 
-// welcome framing by the hour: before 11:00 `Before email` plus the hour-before line, from 11:00 `Start where you are` and no line
+// welcome framing by the hour: before 12:00 `Before email` plus the hour-before line, from 12:00 `Start where you are` and no line
 export async function expectFraming(p, late) {
   const lateEyebrow = t('welcome.eyebrow.late'), morningEyebrow = t('welcome.eyebrow.morning');
   const [on, off] = late ? [lateEyebrow, morningEyebrow] : [morningEyebrow, lateEyebrow];
   await expect(p.getByText(on, { exact: true })).toBeVisible();
   await expect(p.getByText(off, { exact: true })).toHaveCount(0);
   if (late) await expect(p.getByText(HOUR_LINE)).toHaveCount(0); else await expect(p.getByText(HOUR_LINE)).toBeVisible();
+}
+// the lines of the full welcome back, which a late start with no missed days leaves out
+const WELCOME_BACK = ['bad.hero', 'bad.everybody', 'bad.vonnegut', 'bad.notAlone'];
+const SHORTER = t('bad.shorter');
+// a late start with no missed days: `Later start today.` is the heading, the late framing, the shorter-block toggle and
+// I'm ready, and nothing of the welcome back
+export async function expectLateOnlyWelcome(p) {
+  await expect(h1(p)).toHaveText(t('bad.late'));
+  await expectFraming(p, true);
+  await expect(p.getByRole('checkbox', { name: SHORTER })).toBeVisible();
+  await expect(p.getByRole('button', { name: READY })).toBeVisible();
+  for (const id of WELCOME_BACK) await expect(p.getByText(t(id))).toHaveCount(0);
+  await expect(p.getByRole('blockquote')).toHaveCount(0);
+}
+// missed days, late or not: the full welcome back with `It’s been a few days.`, its talk lines and the toggle; the
+// framing follows the hour
+export async function expectWelcomeBack(p, late) {
+  await expect(h1(p)).toHaveText(t('bad.hero'));
+  await expect(p.getByText(t('bad.missed'))).toBeVisible();
+  await expect(p.getByText(t('bad.late'))).toHaveCount(0);
+  for (const id of WELCOME_BACK.slice(1)) await expect(p.getByText(t(id))).toBeVisible();
+  await expect(p.getByRole('checkbox', { name: SHORTER })).toBeVisible();
+  await expectFraming(p, late);
 }
 // quoted from the talk, word for word
 export const RULE = 'What you do is more important than how you do everything else, and doing something well does not make it important. Material over method, the what over the how.';

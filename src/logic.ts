@@ -1,5 +1,5 @@
 // Core, pure logic for Do The Hard Thing. No DOM, no storage: everything here is unit tested.
-// The method's numbers (items, block length, the break, the late cutoffs) come from src/method.ts, and every word it
+// The method's numbers (items, block length, the break, the late cutoff) come from src/method.ts, and every word it
 // returns (the close and welcome lines, tag labels, day counts, the reminder status) from src/copy.ts: its only two
 // imports, both pure.
 import { fmt, t } from './copy';
@@ -309,18 +309,18 @@ export function closeLines(didIt: boolean | null, total: number): { note: string
 
 // ---------- bad days ----------
 export interface BadDay { missedDays: number; late: boolean; bad: boolean; firstVisit: boolean }
-/** Missed days = full days skipped since the last day with content. Late = opened at/after the welcomeFraming cutoff
- *  (LATE_CUTOFFS in src/method.ts, Q1).
+/** Missed days = full days skipped since the last day with content. Late = opened at/after the late cutoff
+ *  (LATE_CUTOFF in src/method.ts).
  *  A first visit (no prior days) is never a bad day: there is nothing to come "back" from. */
 export function badDay(history: Day[], now: Date): BadDay {
   const today = dayKey(now);
   const prev = lastDay(history, today);
   const missedDays = prev ? Math.max(0, daysBetween(prev.date, today) - 1) : 0;
-  const late = lateAt(now.getHours(), 'welcomeFraming');
+  const late = lateAt(now.getHours());
   const firstVisit = !prev;
   return { missedDays, late, bad: !firstVisit && (missedDays > 0 || late), firstVisit };
 }
-/** Welcome framing by the hour alone: before the welcomeFraming cutoff it is "before email" with the hour-before line,
+/** Welcome framing by the hour alone: before the late cutoff it is "before email" with the hour-before line,
  *  first visit or not, bad day or not; a late start meets the user where they are. */
 export function welcomeFraming(bad: BadDay): { eyebrow: string; showHourLine: boolean } {
   return bad.late ? { eyebrow: t('welcome.eyebrow.late'), showHourLine: false } : { eyebrow: t('welcome.eyebrow.morning'), showHourLine: true };

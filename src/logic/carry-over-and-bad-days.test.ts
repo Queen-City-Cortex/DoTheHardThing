@@ -72,9 +72,9 @@ describe('bad days', () => {
     expect(L.badDay([real('2026-10-13')], new Date(2026, 9, 14, 7)).bad).toBe(false);
   });
   it('flags a late open', () => {
-    expect(L.badDay(h, new Date(2026, 9, 14, 11, 30)).late).toBe(true);
-    expect(L.badDay([real('2026-10-13')], new Date(2026, 9, 14, 11, 30))).toEqual({ missedDays: 0, late: true, bad: true, firstVisit: false });
-    expect(L.badDay([real('2026-10-13')], new Date(2026, 9, 14, 10, 59)).bad).toBe(false);
+    expect(L.badDay(h, new Date(2026, 9, 14, 12, 30)).late).toBe(true);
+    expect(L.badDay([real('2026-10-13')], new Date(2026, 9, 14, 12))).toEqual({ missedDays: 0, late: true, bad: true, firstVisit: false });
+    expect(L.badDay([real('2026-10-13')], new Date(2026, 9, 14, 11, 59)).bad).toBe(false);
   });
   it('never treats a first visit as a bad day, even when late', () => {
     expect(L.badDay([], new Date(2026, 9, 14, 18, 57))).toEqual({ missedDays: 0, late: true, bad: false, firstVisit: true });
@@ -96,6 +96,8 @@ describe('bad days', () => {
     it('returning, normal morning', () => { expect(at([real('2026-10-13')], 8)).toEqual(morning); });
     it('returning after missed days, morning (bad but not late)', () => { expect(at(h, 8)).toEqual(morning); });
     it('returning, late', () => { expect(at([real('2026-10-13')], 14)).toEqual(late); });
+    it('returning at 11:00 is still a morning (the one cutoff is 12:00)', () => { expect(at([real('2026-10-13')], 11)).toEqual(morning); });
+    it('returning after missed days, late', () => { expect(at(h, 12)).toEqual(late); });
   });
 });
 

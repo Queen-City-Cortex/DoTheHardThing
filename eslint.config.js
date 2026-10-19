@@ -66,7 +66,7 @@ const pureMessage = (file) => `${file} is pure: ${PURE[file].length ? `it may im
 // The method's numbers have one home, src/method.ts. These selectors apply to every src file except method.ts (tests are
 // exempt like every rule here); they are heuristics for the shapes a stray rule number has taken, not a proof.
 const NOT_A_RULE = ' Not a method number? Name it as a constant and disable this rule on that one line with the reason.'
-const HOURS = "Late-hour cutoffs are method rules (PRODUCT QUESTION Q1, see docs/architecture.md): use isLate(t, 'welcomeFraming' | 'pickWarning') from src/clock.ts. The hours live in LATE_CUTOFFS in src/method.ts." + NOT_A_RULE
+const HOURS = "The late cutoff is a method rule (see docs/architecture/methods-rules.md): use isLate(t) from src/clock.ts, or lateAt(hour) from src/method.ts in pure code. The hour lives in LATE_CUTOFF in src/method.ts." + NOT_A_RULE
 const RULE_NUMBER = 'Method numbers live in src/method.ts (RULES). Import the named constant (for example BLOCK_CHOICES, MAX_ITEMS, BREAK_LIMIT_MS) instead of writing the number here.' + NOT_A_RULE
 const METHOD_SYNTAX = [
   // an hour compared with a literal: getHours() >= 12, hourOf(t) < 11, hour >= 11, lateHour > 10 (a name that is `hour` or ends in Hour; `hoursLeft` is not an hour of the day)

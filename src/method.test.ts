@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as L from './logic';
 import { isLate } from './clock';
 import {
-  BLOCK_CHOICES, BLOCK_MAX, BLOCK_MIN, BREAK_LIMIT_MIN, BREAK_LIMIT_MS, BREAKS_PER_BLOCK, FULL_BLOCK_FOCUS_MIN, LATE_CUTOFFS, lateAt,
+  BLOCK_CHOICES, BLOCK_MAX, BLOCK_MIN, BREAK_LIMIT_MIN, BREAK_LIMIT_MS, BREAKS_PER_BLOCK, FULL_BLOCK_FOCUS_MIN, LATE_CUTOFF, lateAt,
   MAX_ITEMS, PICK_FIRST, RULES, SMALL_BLOCK_DEFAULT, SMALL_BLOCK_OPTIONS, SUGGESTED_MIN, type RuleId,
 } from './method';
 
@@ -93,16 +93,17 @@ const CHECKS: { [K in RuleId]: () => void } = {
     expect(L.clampBlock(Number.NaN, true)).toBe(90);
   },
   'late-start': () => {
-    // the app's own, two cutoffs until Q1 is decided: Welcome framing 11:00, the Pick warning 12:00
-    expect(LATE_CUTOFFS).toEqual({ welcomeFraming: 11, pickWarning: 12 });
-    expect([lateAt(10, 'welcomeFraming'), lateAt(11, 'welcomeFraming'), lateAt(11, 'pickWarning'), lateAt(12, 'pickWarning')]).toEqual([false, true, false, true]);
+    // the app's own, one cutoff (Q1 decided): 12:00 for the Welcome framing, the bad-day check and the Pick line alike
+    expect(LATE_CUTOFF).toBe(12);
+    expect(RULES['late-start'].value).toEqual({ hour: 12 });
+    expect([lateAt(0), lateAt(11), lateAt(12), lateAt(23)]).toEqual([false, false, true, true]);
     const at = (h: number, m = 0) => new Date(2026, 9, 14, h, m);
     const returning = [{ ...L.newDay('2026-10-13', 0), items: [item('a', 'risky')] }];
-    expect(L.badDay(returning, at(10, 59)).late).toBe(false);
-    expect(L.badDay(returning, at(11)).late).toBe(true);
-    expect(isLate(at(11, 59), 'pickWarning')).toBe(false);
-    expect(isLate(at(12), 'pickWarning')).toBe(true);
-    expect(isLate(at(12).getTime(), 'pickWarning')).toBe(true);
+    expect(L.badDay(returning, at(11, 59)).late).toBe(false);
+    expect(L.badDay(returning, at(12)).late).toBe(true);
+    expect(isLate(at(11, 59))).toBe(false);
+    expect(isLate(at(12))).toBe(true);
+    expect(isLate(at(12).getTime())).toBe(true);
   },
 };
 
@@ -126,7 +127,4 @@ describe('method rules (src/method.ts)', () => {
       }
     }
   });
-  // PRODUCT QUESTION Q1 stays visible in every test summary as a todo. Once the owner picks one cutoff, tsc asks for
-  // the @ts-expect-error in src/method.ts to go; turn this into an `it` that expects one value.
-  it.todo('late cutoffs agree (Q1)');
 });
