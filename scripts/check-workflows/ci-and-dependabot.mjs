@@ -64,8 +64,10 @@ export function checkDependabot(dep) {
     const at = dep.line(`package-ecosystem: ${eco}`);
     const grouped = Object.values(u.groups ?? {}).some((g) => ['minor', 'patch'].every((t) => asList(g?.['update-types']).includes(t)));
     if (!grouped) dep.fail('i', at, `${eco}: no group covers minor and patch: add \`groups: { ${eco}-minor-and-patch: { update-types: ["minor", "patch"] } }\``);
-    if (eco === 'npm' && !asList(u.ignore).some((x) => asList(x?.['update-types']).includes('version-update:semver-major')))
+    if (eco === 'npm' && !asList(u.ignore).some((x) => x?.['dependency-name'] === '*' && asList(x?.['update-types']).includes('version-update:semver-major')))
       dep.fail('i', at, 'npm: no ignore for majors: add `ignore: [{ dependency-name: "*", update-types: ["version-update:semver-major"] }]` (a major is a planned upgrade)');
+    if (eco === 'npm' && !asList(u.ignore).some((x) => x?.['dependency-name'] === 'eslint-plugin-react-hooks' && asList(x?.['update-types']).includes('version-update:semver-minor')))
+      dep.fail('i', at, 'npm: eslint-plugin-react-hooks minors are not ignored: add `{ dependency-name: "eslint-plugin-react-hooks", update-types: ["version-update:semver-minor", "version-update:semver-major"] }` to ignore (a minor can add a compiler rule that flags existing code)');
   }
   if (!dep.lines.some((l) => /#.*security/i.test(l))) dep.fail('i', 1, 'no comment says "security": keep the comment that an ignore also drops security updates, and where to look for them');
 }

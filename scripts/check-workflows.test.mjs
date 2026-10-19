@@ -120,7 +120,9 @@ describe('check:workflows', () => {
     ['l', 'the journeys job publishes', ({ ci }) => ci('      - run: npx playwright install --with-deps chromium\n', '      - run: npx playwright install --with-deps chromium\n      - run: npx --yes "wrangler@${WRANGLER_VERSION}" publish\n'), /\[l\] job journeys, step 5: `.* publish` deploys/],
     ['i', 'npm groups removed', ({ dep }) => dep('    groups:\n      npm-minor-and-patch:\n        update-types: ["minor", "patch"]\n', ''), /dependabot\.yml:\d+ \[i\] npm: no group covers minor and patch/],
     ['i', 'actions group covers patch only', ({ dep }) => dep('actions-minor-and-patch:\n        update-types: ["minor", "patch"]', 'actions-patch:\n        update-types: ["patch"]'), /\[i\] github-actions: no group covers minor and patch/],
-    ['i', 'npm major ignore removed', ({ dep }) => dep('    ignore:\n      - dependency-name: "*"\n        update-types: ["version-update:semver-major"]\n', ''), /\[i\] npm: no ignore for majors/],
+    ['i', 'npm major ignore removed', ({ dep }) => dep('      - dependency-name: "*"\n        update-types: ["version-update:semver-major"]\n', ''), /\[i\] npm: no ignore for majors/],
+    ['i', 'react-hooks ignore on another package', ({ dep }) => dep('"eslint-plugin-react-hooks"', '"eslint-plugin-react"'), /\[i\] npm: eslint-plugin-react-hooks minors are not/],
+    ['i', 'react-hooks minors no longer ignored', ({ dep }) => dep('semver-minor", "v', 'semver-patch", "v'), /\[i\] npm: eslint-plugin-react-hooks minors are not/],
     ['i', 'the security comment removed', ({ write }) => write('dependabot.yml', readFileSync(join(ROOT, '.github/dependabot.yml'), 'utf8').replace(/^#.*\n/gm, '')), /\[i\] no comment says "security"/],
   ];
   it.each(BROKEN)('[%s] fails: %s', (_rule, _what, edit, message) => {
