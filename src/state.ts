@@ -22,9 +22,11 @@ export type ClosedDay = L.Day & { closed: true };
  *  so a block, a new day and Start today over cannot carry it (68fc774). */
 type Planning = { day: PlanDay; small: boolean };
 export type Welcome = { screen: 'welcome' } & Planning;
-/** Name's step (pushed, risky, anxious) and its draft are still component state in App.tsx: a reload starts at the first step. */
-export type Name = { screen: 'name' } & Planning;
-/** Ask's item index is still component state in App.tsx, like Name's step. */
+/** Name's step (pushed, risky, anxious) and its draft are component state in App/Name.tsx; the state says only which step
+ *  it opens on: the first, or the last when Back from Ask's first item returns to the step the user came from. A reload
+ *  opens Welcome, and About or Your days over Name go back to its first step (it remounts), as before. */
+export type Name = { screen: 'name'; opensAt: 'first' | 'last' } & Planning;
+/** Ask's item index is component state in App/Ask.tsx: Ask opens on its first item (Look again included). */
 export type Ask = { screen: 'ask' } & Planning;
 /** `list` is pickOrder(day.items); `chosen` is one of its items or null, and day.chosenId always agrees with it.
  *  Only pick() builds one, so the list cannot go stale and Start cannot see a choice that is not on it (6ef125f). */
@@ -35,11 +37,13 @@ export type Close = { screen: 'close'; day: EndedDay };
 export type Closed = { screen: 'closed'; day: ClosedDay };
 /** A screen that shows the day. */
 export type Base = Welcome | Name | Ask | Pick | BlockScreen | Close | Closed;
+/** A day screen an overlay goes back to: Name there opens on its first step, as it did before it said which. */
+export type Under = Exclude<Base, Name> | (Name & { opensAt: 'first' });
 export type OverlayName = 'about' | 'days';
 /** About and Your days open over a day screen. The screen they go back to is part of the overlay (`under`), so there is
  *  no separate stack to clear when they close; `prev` holds the overlays opened before this one, so Done goes back one
  *  step (About, then Your days, then Done goes back to About). */
-export type Overlay = { screen: OverlayName; under: Base; prev: OverlayName[] };
+export type Overlay = { screen: OverlayName; under: Under; prev: OverlayName[] };
 export type State = Base | Overlay;
 export type Screen = State['screen'];
 
@@ -57,7 +61,7 @@ export type Action =
   | { type: 'namingDone' } // Name: Two questions
   | { type: 'answer'; id: string; field: 'satisfied' | 'leverage'; value: boolean } // Ask: Yes / No
   | { type: 'askDone' } // Ask: Pick one
-  | { type: 'stepBack' } // Back on Name and Ask (their first step), and Pick
+  | { type: 'stepBack' } // Back on Name and Ask (their first step), and Look again on Pick
   | { type: 'choose'; id: string } // Pick: an item
   | { type: 'startBlock'; min: number } // Pick: Start the block
   | { type: 'pause' } // block: Step away
@@ -95,7 +99,7 @@ export function pick(day: PlanDay, small: boolean): Pick {
  *  after a block, otherwise Welcome. The day is kept as stored, chosenId included, so what is saved next is the value
  *  that App.tsx saved. A running block is not settled here: App.tsx sends a `tick` when it opens, as its old settle
  *  effect ran once on the first render. */
-export function resume(day: L.Day, now: number): Base {
+export function resume(day: L.Day, now: number): Under {
   if (isClosed(day)) return { screen: 'closed', day };
   if (isRunning(day)) return { screen: 'block', day, now };
   if (isEnded(day)) return { screen: 'close', day };
@@ -108,6 +112,8 @@ export function init(days: L.Day[], now: number): State {
 }
 
 export const isOverlay = (s: State): s is Overlay => s.screen === 'about' || s.screen === 'days';
+/** The day screen an overlay opened over goes back to (see Under). */
+const under = (s: Base): Under => (s.screen === 'name' ? { ...s, opensAt: 'first' } : s);
 /** The day screen on show, or the one under an open overlay. */
 export const base = (s: State): Base => (isOverlay(s) ? s.under : s);
 export const dayOf = (s: State): L.Day => base(s).day;
@@ -134,18 +140,18 @@ function blockStep(s: BlockScreen, b: L.Block, now: number): BlockScreen | Close
 function reduceBase(s: Base, a: Action, now: number): Base {
   switch (s.screen) {
     case 'welcome':
-      if (a.type === 'start') return { ...s, screen: 'name' };
+      if (a.type === 'start') return { ...s, screen: 'name', opensAt: 'first' };
       if (a.type === 'setSmall') return { ...s, small: a.small };
       return s;
     case 'name':
       if (a.type === 'editItems') return { ...s, day: withItems(s.day, a.items) };
-      if (a.type === 'stepBack') return { ...s, screen: 'welcome' };
+      if (a.type === 'stepBack') return { screen: 'welcome', day: s.day, small: s.small };
       // Two questions is only offered with at least one item, so Ask always has one to show
-      if (a.type === 'namingDone' && L.filled(s.day.items).length > 0) return { ...s, screen: 'ask', day: withItems(s.day, L.guidedOrder(L.filled(s.day.items))) };
+      if (a.type === 'namingDone' && L.filled(s.day.items).length > 0) return { screen: 'ask', small: s.small, day: withItems(s.day, L.guidedOrder(L.filled(s.day.items))) };
       return s;
     case 'ask':
       if (a.type === 'answer') return { ...s, day: withItems(s.day, s.day.items.map((i) => (i.id === a.id ? { ...i, [a.field]: a.value } : i))) };
-      if (a.type === 'stepBack') return { ...s, screen: 'name' };
+      if (a.type === 'stepBack') return { ...s, screen: 'name', opensAt: 'last' }; // Back from the first item: Name's last step, where the user came from
       if (a.type === 'askDone') return pick(s.day, s.small);
       return s;
     case 'pick':
@@ -186,7 +192,7 @@ function reduceBase(s: Base, a: Action, now: number): Base {
 export function reduce(s: State, a: Action, now: number): State {
   switch (a.type) {
     case 'open':
-      return isOverlay(s) ? { screen: a.to, under: s.under, prev: [...s.prev, s.screen] } : { screen: a.to, under: s, prev: [] };
+      return isOverlay(s) ? { screen: a.to, under: s.under, prev: [...s.prev, s.screen] } : { screen: a.to, under: under(s), prev: [] };
     case 'back':
       if (!isOverlay(s)) return s;
       return s.prev.length ? { screen: s.prev[s.prev.length - 1], under: s.under, prev: s.prev.slice(0, -1) } : s.under;

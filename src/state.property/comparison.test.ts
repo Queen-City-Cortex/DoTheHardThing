@@ -12,7 +12,7 @@ describe('the reducer behaves like the App.tsx before it (8f5dbaa): same UI-gate
   it('weighted mix: the same, through Pick, the block, Close, Closed and midnight, and every action and screen is reached', () => {
     const { diffs, cov } = compared(uiWeighted);
     expect(diffs).toEqual([]);
-    console.log('[comparison, weighted] state changes by action:', JSON.stringify(cov.changed), '\n  views:', JSON.stringify(cov.views), '\n  stored records opened:', JSON.stringify(cov.opened));
+    console.log('[comparison, weighted] state changes by action:', JSON.stringify(cov.changed), '\n  views:', JSON.stringify(cov.views), '\n  stored records opened:', JSON.stringify(cov.opened), '\n  sub-steps:', JSON.stringify(cov.substeps));
     if (SEEDS !== SEQUENCES) return; // the floors are for the 5000 sequences they were measured on
     // Each floor is about half of what these 5000 sequences give (in brackets), so a change that thins the evidence out
     // fails here instead of passing quietly. Every action type changes the state at least 200 times, except the rare
@@ -25,5 +25,7 @@ describe('the reducer behaves like the App.tsx before it (8f5dbaa): same UI-gate
     expect(Object.entries(cov.views).filter(([, n]) => n < 300).map(([k, n]) => `${k} ${n}`)).toEqual([]);
     // a rollover opened each kind of record another tab saved for the new date (plan [16], running [19], ended [27], closed [15])
     expect(Object.entries(cov.opened).filter(([, n]) => n < 5).map(([k, n]) => `${k} ${n}`)).toEqual([]);
+    // Name was on show opened on its last step, after Back from Ask's first item, at least 2000 times (nameLast [4533])
+    expect(Object.entries(cov.substeps).filter(([, n]) => n < 2000).map(([k, n]) => `${k} ${n}`)).toEqual([]);
   });
 });

@@ -16,9 +16,9 @@ export function Chip({ tags, pushedCount }: { tags: L.Tag[]; pushedCount: number
   return <span className={`tag ${L.primaryTag(tags)}`}>{L.tagLabel(tags, pushedCount)}</span>;
 }
 
-export function Name({ day, history, today, upd, onBack, onNext }: { day: L.Day; history: L.Day[]; today: string; upd: (p: { items: L.Item[] }) => void; onBack: () => void; onNext: () => void }) {
+export function Name({ day, history, today, opensAt, upd, onBack, onNext }: { day: L.Day; history: L.Day[]; today: string; opensAt: 'first' | 'last'; upd: (p: { items: L.Item[] }) => void; onBack: () => void; onNext: () => void }) {
   const lefts = useMemo(() => L.leftovers(history, today), [history.length, today]); // eslint-disable-line react-hooks/exhaustive-deps
-  const [phase, setPhase] = useState(0);
+  const [phase, setPhase] = useState(opensAt === 'last' ? PHASES.length - 1 : 0); // Back from Ask's first item opens the last step
   const [draft, setDraft] = useState('');
   const [note, setNote] = useState<string | null>(null);
   const input = useRef<HTMLInputElement>(null);

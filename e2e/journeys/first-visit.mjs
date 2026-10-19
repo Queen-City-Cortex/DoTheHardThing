@@ -2,7 +2,7 @@
 
 import { expect } from '@playwright/test';
 import { BRAND, fmt, t } from '../../src/copy.ts';
-import { NEXT, BACK, ADD, SKIP, h1, listed, row, addItem, answerAll, FIRST_H1, READY, expectFirstWelcome, PUSHED_Q } from '../drive/actions.mjs';
+import { NEXT, BACK, ADD, SKIP, NO, h1, listed, row, addItem, answerAll, FIRST_H1, READY, expectFirstWelcome, PUSHED_Q } from '../drive/actions.mjs';
 import { journey, J } from '../drive/registry.mjs';
 
 export const firstVisitJourneys = {
@@ -115,6 +115,46 @@ export const firstVisitJourneys = {
     const items = (await s.store()).days.at(-1).items;
     if (items.length !== 1 || items[0].text !== Q || JSON.stringify(items[0].tags) !== '["pushed","risky","anxious"]' || 'tag' in items[0])
       throw new Error('stored items wrong: ' + JSON.stringify(items));
+  }),
+  'back-to-last-substep': journey({ id: 'back-to-last-substep', feature: 'first-visit', proves: ['fv-back-from-ask', 'ps-look-again'], strings: ['name.risky', 'name.anxious', 'twoQuestions', 'none.hero', 'none.again'] }, async (s) => { // Back from the first Ask item returns to Name's last step, the one the user came from; Look again opens Ask on its first item
+    const p = s.page;
+    await s.step('to-ask', async () => {
+      await p.getByRole('button', { name: READY }).click();
+      await p.getByRole('button', { name: SKIP }).click();
+      await expect(h1(p)).toHaveText(t('name.risky'));
+      await addItem(p, 'Ask for the raise'); await p.getByRole('button', { name: NEXT }).click();
+      await expect(h1(p)).toHaveText(t('name.anxious'));
+      await addItem(p, 'Tax letter'); await p.getByRole('button', { name: t('twoQuestions') }).click();
+      await expect(p.getByLabel(fmt.steps(1, 2))).toBeVisible();
+    });
+    await s.step('back-from-first-ask-item', async () => {
+      await p.getByRole('button', { name: BACK }).click();
+      await expect(h1(p)).toHaveText(t('name.anxious'));
+      await expect(p.getByLabel(fmt.steps(3, 3))).toBeVisible();
+      await expect(p.getByRole('textbox', { name: t('name.anxious') })).toBeVisible();
+      await expect(row(p, 'Ask for the raise')).toBeVisible(); await expect(row(p, 'Tax letter')).toBeVisible();
+    });
+    await s.step('back-inside-name', async () => { // Back inside Name still goes to the step before
+      await p.getByRole('button', { name: BACK }).click();
+      await expect(h1(p)).toHaveText(t('name.risky'));
+      await expect(p.getByLabel(fmt.steps(2, 3))).toBeVisible();
+    });
+    await s.step('no-to-both', async () => {
+      await p.getByRole('button', { name: NEXT }).click();
+      await p.getByRole('button', { name: t('twoQuestions') }).click();
+      await expect(p.getByLabel(fmt.steps(1, 2))).toBeVisible();
+      await answerAll(p, [[false, false], [false, false]]);
+      await expect(h1(p)).toHaveText(t('none.hero'));
+    });
+    // Look again opens Ask on its first item today (a separate change, which needs the owner's call, opens it on the last)
+    await s.step('look-again', async () => {
+      await p.getByRole('button', { name: t('none.again') }).click();
+      await expect(h1(p)).toContainText('Ask for the raise');
+      await expect(p.getByLabel(fmt.steps(1, 2))).toBeVisible();
+      for (const q of [0, 1]) await expect(p.locator('.q').nth(q).getByRole('button', { name: NO, exact: true })).toHaveClass(/\bon\b/);
+    });
+    const items = (await s.store()).days.at(-1).items.map((i) => [i.text, i.satisfied, i.leverage]);
+    if (JSON.stringify(items) !== JSON.stringify([['Ask for the raise', false, false], ['Tax letter', false, false]])) throw new Error('items or answers lost: ' + JSON.stringify(items));
   }),
   'first-visit-late': journey({ id: 'first-visit-late', feature: 'first-visit', proves: ['fv-welcome-late'], strings: [] }, async (s) => { await J['first-visit'](s); }), // the same welcome at 18:57, after the late hour: the hour line still shows and there is no `Start where you are`
 };

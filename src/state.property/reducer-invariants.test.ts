@@ -122,7 +122,7 @@ describe('BG-1 invariants, the reducer (state.ts)', () => {
     const closeS: S.Close = { screen: 'close', day: ended };
     const closedS: S.Closed = { screen: 'closed', day: closedDay };
     const welcomeS: S.Welcome = { screen: 'welcome', day: plan, small: true };
-    const overlays = (b: S.Base): S.State[] => [b, { screen: 'about', under: b, prev: [] }, { screen: 'days', under: b, prev: ['about'] }];
+    const overlays = (b: S.Under): S.State[] => [b, { screen: 'about', under: b, prev: [] }, { screen: 'days', under: b, prev: ['about'] }];
     const roll = (s: S.State, stored: L.Day[] = []) => S.reduce(s, { type: 'rollover', stored }, after);
     // what another tab saved for the new date: the rollover opens it where it stands
     const theirs = { ...L.newDay('2026-10-15', after - MIN), items: two() };
@@ -159,7 +159,7 @@ describe('BG-1 invariants, the reducer (state.ts)', () => {
       // a closed day whose block still runs (a hand-edited store) moves too
       expectMoved({ screen: 'closed', day: { ...running, closed: true } });
       const picking = S.pick({ ...plan, items: plan.items.map((i) => ({ ...i, satisfied: true })), chosenId: 'a' }, false);
-      for (const b of [welcomeS, { ...welcomeS, screen: 'name' } as S.Name, { ...welcomeS, screen: 'ask' } as S.Ask, picking])
+      for (const b of [welcomeS, { ...welcomeS, screen: 'name', opensAt: 'first' } as S.Under, { ...welcomeS, screen: 'ask' } as S.Ask, picking])
         for (const s of overlays(b)) expectMoved(s);
     });
     it('on the same date, changes nothing', () => {
@@ -187,7 +187,11 @@ describe('BG-1 invariants, the reducer (state.ts)', () => {
     const f: S.State = { screen: 'closed', day: { ...day, closed: true }, small: true };
     // @ts-expect-error the block screen draws the countdown from its own `now`
     const g: S.State = { screen: 'block', day: running };
-    expect([...ok, a, b, c, d, e, f, g]).toHaveLength(10);
+    // @ts-expect-error an overlay goes back to Name on its first step (Name remounts when the overlay closes, as before)
+    const i: S.State = { screen: 'about', under: { screen: 'name', opensAt: 'last', day: plan, small: false }, prev: [] };
+    // @ts-expect-error Name says which step it opens on
+    const j: S.State = { screen: 'name', day: plan, small: false };
+    expect([...ok, a, b, c, d, e, f, g, i, j]).toHaveLength(12);
   });
 });
 

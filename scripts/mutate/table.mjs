@@ -65,6 +65,8 @@ export const MUTATIONS = [
   { id: 'pick-back-to-welcome', what: 'reducer: stepBack on Pick (Look again) lands on Welcome, not Ask', file: 'src/state.ts',
     edits: [["if (a.type === 'stepBack') return { screen: 'ask', day: s.day, small: s.small };", "if (a.type === 'stepBack') return { screen: 'welcome', day: s.day, small: s.small };"]],
     journeys: ['copy-from-the-talk'] },
+  { id: 'ask-back-to-first-name-step', what: 'reducer: Back from the first Ask item opens Name on its first step, not the last', file: 'src/state.ts',
+    edits: [["return { ...s, screen: 'name', opensAt: 'last' };", "return { ...s, screen: 'name', opensAt: 'first' };"]], journeys: ['back-to-last-substep', 'ask-back'] },
   { id: 'block-without-choice', what: 'reducer: Start the block with no choice still opens the block screen', file: 'src/state.ts',
     edits: [['if (!s.chosen) return s;', "if (!s.chosen) return { screen: 'block', now, day: { ...s.day, block: { ...L.startBlock(a.min, now, s.small), endedAt: null }, gotBlock: null } };"]],
     journeys: ['pick-requires-choice'] },

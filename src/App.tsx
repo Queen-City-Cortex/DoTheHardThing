@@ -111,7 +111,7 @@ export default function App() {
   const view = (s: S.State) => {
     switch (s.screen) {
       case 'welcome': return <Welcome bad={bad} onStart={() => send({ type: 'start' })} small={s.small} setSmall={(small) => send({ type: 'setSmall', small })} />;
-      case 'name': return <Name day={s.day} history={history} today={s.day.date} upd={({ items }) => send({ type: 'editItems', items })} onBack={stepBack}
+      case 'name': return <Name day={s.day} history={history} today={s.day.date} opensAt={s.opensAt} upd={({ items }) => send({ type: 'editItems', items })} onBack={stepBack}
         onNext={() => send({ type: 'namingDone' })} />;
       case 'ask': return <Ask items={L.filled(s.day.items)} setItem={(id, field, value) => send({ type: 'answer', id, field, value })} onBack={stepBack} onDone={() => send({ type: 'askDone' })} />;
       case 'pick': return (

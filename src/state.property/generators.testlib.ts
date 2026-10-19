@@ -197,8 +197,18 @@ export function brokenState(s: S.State): string | null {
     if (JSON.stringify(b.list) !== JSON.stringify(L.pickOrder(b.day.items))) return 'pick list is not pickOrder(items)';
     if (b.chosen ? !b.list.includes(b.chosen) || b.day.chosenId !== b.chosen.id : b.day.chosenId !== null) return `pick chosen ${b.chosen?.id ?? null} and day.chosenId ${b.day.chosenId} disagree`;
   }
+  if (('opensAt' in b) !== (b.screen === 'name')) return `opensAt on ${b.screen}`;
+  if (S.isOverlay(s) && s.under.screen === 'name' && s.under.opensAt !== 'first') return 'an overlay goes back to Name on its last step (Name remounts on its first)';
   if (b.screen === 'block' && !S.isRunning(b.day)) return 'block screen without a running day';
   if (b.screen === 'close' && !S.isEnded(b.day)) return 'close without an ended day';
   if (b.screen === 'closed' && !S.isClosed(b.day)) return 'closed without a closed day';
+  return null;
+}
+/** One reducer step: Name opens on its last step exactly when Back from Ask's first item brought the user there (an
+ *  item edit on Name keeps it). */
+export function brokenStep(prev: S.State, a: S.Action, next: S.State): string | null {
+  const last = (x: S.State) => x.screen === 'name' && x.opensAt === 'last';
+  if (prev.screen === 'ask' && a.type === 'stepBack' && !last(next)) return `Back from Ask opens ${next.screen}, not Name on its last step`;
+  if (last(next) && !(prev.screen === 'ask' && a.type === 'stepBack') && !last(prev)) return `Name opens on its last step after ${a.type} on ${prev.screen}`;
   return null;
 }
