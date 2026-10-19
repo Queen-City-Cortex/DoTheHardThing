@@ -220,14 +220,14 @@ async function main() {
   const secs = (t0) => Math.round((Date.now() - t0) / 100) / 10;
 
   // the copy: no .git, no dist, no table test; node_modules is a directory of links to the real entries, so the caches
-  // tsc, vite and vitest write under node_modules (.tmp, .vite, .vitest) stay in the copy
+  // tsc, vite and vitest write under node_modules (.tmp, .vite, .vitest, .vitest-cache) stay in the copy
   fs.rmSync(COPY, { recursive: true, force: true });
   fs.rmSync(EVIDENCE, { recursive: true, force: true });
   const skip = new Set(['node_modules', 'dist', '.git', 'scripts/mutate.test.mjs']);
   fs.cpSync(REPO, COPY, { recursive: true, filter: (src) => { const rel = path.relative(REPO, src).split(path.sep).join('/'); return !skip.has(rel) && !skip.has(rel.split('/')[0]); } });
   fs.mkdirSync(path.join(COPY, 'node_modules'));
   for (const e of fs.readdirSync(path.join(REPO, 'node_modules'))) {
-    if (['.tmp', '.vite', '.vitest', '.cache'].includes(e)) continue;
+    if (['.tmp', '.vite', '.vitest', '.vitest-cache', '.cache'].includes(e)) continue;
     fs.symlinkSync(fs.realpathSync(path.join(REPO, 'node_modules', e)), path.join(COPY, 'node_modules', e));
   }
   const pristine = new Map(MUTATIONS.map((m) => [m.file, fileText(COPY, m.file)]));
