@@ -36,7 +36,7 @@ In parallel: `node e2e/run.mjs` runs each journey in its own `drive.mjs` child, 
 
 Each journey uses a fresh `chromium.launch()` and `newContext()` (390×844, en-US, America/New_York). It then runs `page.clock.install` and `pauseAt(<start>)` before `goto`. Time moves only through `clock.runFor` (timers fire, as in the block countdown), `clock.fastForward` (a jump, as in a long step-away) or `clock.setSystemTime` followed by `reload()` (a new day). Start times are in `START` in `e2e/drive.mjs` (the default is 07:30 on 2026-10-14; the late hour is 11:00 local).
 
-Stable handles from `src/App.tsx`:
+Stable handles from `src/App.tsx` and `src/App/*.tsx`:
 - Buttons by role and name: `I'm ready`, `Add`, `Next`, `Skip`, `Two questions`, `Pick one`, `Start the block`, `Step away briefly`, `I'm back`, `End block`, `Yes` / `Not today` (Close, after any block; use `exact: true` for `Yes`), `Close today`, `See your days`, `Start today over`, `Yes, start over`, `Keep today`, `About`, `Your days` (the About row), `Done` (header on About and Your days), `Back`.
 - Headings by level-1 text.
 - The Name input is the only `textbox`, and its aria-label equals the question. On step 1 the list is `listitem`s with `Remove <item>` buttons; on steps 2 and 3 it is the group `Already on your list` of toggle buttons (`aria-pressed` when the item has this step's tag). Use `row(p, text)` for either.

@@ -87,7 +87,7 @@ const METHOD_SYNTAX = [
 // its talk quotes, tests). scripts/boundaries/app-copy.test.mjs fails when a listed file no longer exists, and when this list is
 // not every non-test .ts/.tsx file directly under src/ minus its NOT_COPY_FILES (copy.ts, method.ts, vite-env.d.ts,
 // each with its reason), so a rename, a removal or a new file cannot change what the rule covers without a test saying so.
-export const COPY_FILES = ['src/App.tsx', 'src/main.tsx', 'src/logic.ts', 'src/reminder.ts', 'src/storage.ts', 'src/analytics.ts', 'src/clock.ts', 'src/decode.ts', 'src/events.ts', 'src/state.ts', 'src/logic/reminder.ts']
+export const COPY_FILES = ['src/App.tsx', 'src/App/Welcome.tsx', 'src/App/Name.tsx', 'src/App/Ask.tsx', 'src/App/Pick.tsx', 'src/App/BlockView.tsx', 'src/App/Close.tsx', 'src/App/Days.tsx', 'src/App/About.tsx', 'src/main.tsx', 'src/logic.ts', 'src/reminder.ts', 'src/storage.ts', 'src/analytics.ts', 'src/clock.ts', 'src/decode.ts', 'src/events.ts', 'src/state.ts', 'src/logic/reminder.ts']
 const MOVE_TEXT = "Move this text to src/copy.ts and render it with t(id); a talk quote needs kind: 'quote' and its transcript timestamp as ref." +
   ' Not words a person reads (a class list, an event name)? Disable this rule on that one line with the reason.'
 const FOUR_WORDS = '/\\S+\\s+\\S+\\s+\\S+\\s+\\S+/'
