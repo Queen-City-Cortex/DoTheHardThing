@@ -1,8 +1,5 @@
-// Every word the app shows, in one place: the Welcome (first visit, returning morning, late start, missed days), Name,
-// Ask, Pick (and "Nothing got a yes"), block, Close, Closed, Your days and About screens, the header, the save note, the
-// notifications, and the labels logic.ts builds (tags, day counts, the reminder status). App.tsx, logic.ts and
-// reminder.ts render or return words only through t(id), fmt and the constants here, and the journeys (e2e/drive.mjs)
-// import this file, so a wording change here moves the app and its assertions together.
+// Every word the app shows, in one place; App.tsx, logic.ts and reminder.ts render or return words only through t(id), fmt and the
+// constants here, and the journeys import this file (the full list of screens: docs/architecture/words-on-screen.md).
 // Pure like method.ts: no imports, no DOM. Erasable TypeScript only (no enums, namespaces or parameter properties), so
 // Node runs it with its types stripped.
 //
@@ -10,18 +7,7 @@
 //   quote       the talk word for word; ref is the timestamp of the transcript line where the quoted words start
 //   paraphrase  the talk in the app's words; ref is the timestamp of the line it paraphrases
 //   own         the app's own words; it can never carry a talk timestamp
-// src/copy.test.ts checks the quotes and refs against the transcript where FERRISS_TRANSCRIPT points at one (the transcript
-// is not in the repo), and checks kinds, ref shapes and the REQUIRED lines everywhere.
-// fmt holds no talk words: a line from the talk is an entry with a kind. A line with a value in it is an entry with a
-// {placeholder} that fmt fills through fill(), and src/copy.test.ts fails on any literal of four or more words in fmt.
-//
-// Some ids are named for one screen and show on others too (the no-duplicate-text test makes them share one entry), so a
-// wording change there moves every place: close.yes is also Ask's Yes, pick.eyebrow is also Ask's last button,
-// twoQuestions is the last Name button and the Ask eyebrow, yourOneThing is the block eyebrow and the Your days stand-in
-// for a done day with no text, and back, next, about, done, yourDays and no show on more than one screen.
-//
-// Bundle cost: the ids, kinds and refs ship to the browser with the text (about 1.5 KB gzip for 142 entries). If the
-// table keeps growing, build a text-only map at build time.
+// More notes (what the tests check, ids shared by screens, the bundle cost): docs/architecture/words-on-screen.md.
 
 type Digit = '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9';
 /** A timestamp in the talk transcript, m:ss (two digits of seconds, so '4:5' and '4:005' are type errors). */
@@ -41,9 +27,7 @@ export const TALK_URL = 'https://x.com/tferriss/status/2110445158206447830';
 
 const entries = <T extends Record<string, CopyEntry>>(e: T): T => e;
 
-// Judgment calls on kind: `first.step2` and `block.comeBack` are quotes of fragments ("so you got to pick one thing",
-// "just gently come back to your one to-do."), `close.good` and `closed.slide` are paraphrases ("That's the whole
-// thing."; the talk says "they'll", not "It'll"), and the Name, block and About calls are noted at each entry.
+// Judgment calls on kind are noted at each entry; the ones that cover several: docs/architecture/words-on-screen.md.
 export const COPY = entries({
   // ---- shared: one word or line on more than one screen ----
   'about': { kind: 'own', text: 'About' }, // the header link and the About heading
@@ -266,40 +250,3 @@ export const fmt = {
   pausedLine: (awayMin: number, limitMin: number) => `${fill('block.paused', { min: awayMin, limit: limitMin })} ${t('block.onePause')}`,
   reminderSet: (time: string, trigger: boolean) => `${fill('reminder.set', { time })} ${t(trigger ? 'reminder.trigger' : 'reminder.openOnly')}`,
 };
-
-// Lines that must be on a screen whenever it shows: src/copy.test.ts renders each screen state and looks for every one.
-// Sentences only (a line ending in . ? or !, or of four or more words): a button name like 'Yes' would pass by accident.
-const ABOUT = ['about.intro', 'about.busy', 'guise', 'about.method', 'about.independent', 'privacy.device', 'privacy.tallies', 'privacy.dnt', 'privacy.host', 'about.free'] as const;
-// About in each state the reminder control can be in: what the control says is the one line that changes
-const ABOUT_STATES = {
-  aboutUnsupported: [...ABOUT, 'reminder.unsupported'],
-  aboutDenied: [...ABOUT, 'reminder.denied'],
-  aboutAsk: [...ABOUT, 'reminder.ask'],
-  aboutAllowed: [...ABOUT, 'reminder.allowed'],
-} as const;
-const FIRST_WELCOME = ['first.hero', 'first.step1.d', 'first.step2.d', 'first.step3.d', 'first.source', 'talk.link', 'welcome.hour', 'first.assure'] as const;
-export const REQUIRED = {
-  firstWelcome: FIRST_WELCOME,
-  // a first visit after the welcomeFraming cutoff is still the first welcome, hour line included
-  firstWelcomeLate: FIRST_WELCOME,
-  morningWelcome: ['morning.hero', 'morning.email', 'morning.takes', 'welcome.hour'],
-  lateWelcome: ['bad.hero', 'bad.late', 'bad.everybody', 'bad.vonnegut', 'bad.notAlone', 'bad.shorter'],
-  missedWelcome: ['bad.hero', 'bad.missed', 'bad.everybody', 'welcome.hour', 'bad.shorter'],
-  nothingPicked: ['none.hero', 'none.useful', 'guise'],
-  pick: ['pick.hero', 'pick.ten', 'pick.full', 'pick.slide'],
-  close: ['close.hero', 'close.noItem'],
-  closeFirstYes: ['close.hero', 'close.first', 'close.firstCount'],
-  closed: ['closed.done', 'closed.slide'],
-  closedNotToday: ['closed.fresh', 'closed.slide', 'closed.noStreaks'],
-  nameFirst: ['name.pushed', 'name.pushed.hint'],
-  // leftovers from yesterday replace the step's hint
-  nameLeftovers: ['name.pushed', 'name.leftovers'],
-  ask: ['ask.satisfied', 'ask.leverage'],
-  block: ['block.focus', 'block.pauseHint'],
-  blockDrifted: ['block.drifted', 'block.pauseHint'],
-  blockPaused: ['block.onePause'],
-  blockPauseUsed: ['block.focus', 'block.pauseUsed'],
-  daysEmpty: ['days.hero', 'days.empty'],
-  days: ['days.hero', 'days.only'],
-  ...ABOUT_STATES,
-} as const satisfies Record<string, readonly CopyId[]>;

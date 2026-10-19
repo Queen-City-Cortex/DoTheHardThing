@@ -1,13 +1,15 @@
 // e2e/gaps.mjs on fixture registries (GAPS_FILE) and a fake drive script (GAPS_DRIVE), so no browser runs: each outcome
 // the runner exists for (XFAIL, STALE, WRONG, EXPIRED, MALFORMED, MISSING, UNREGISTERED) prints its line and exit code.
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
+/** e2e/drive.mjs and the files it imports (e2e/drive/*.mjs, e2e/journeys/*.mjs), as one text. */
+const driveText = () => [join(ROOT, 'e2e/drive.mjs'), ...['drive', 'journeys'].flatMap((d) => readdirSync(join(ROOT, 'e2e', d)).sort().map((f) => join(ROOT, 'e2e', d, f)))].map((f) => readFileSync(f, 'utf8')).join('\n');
 const SCRIPT = join(ROOT, 'e2e/gaps.mjs');
 const dir = mkdtempSync(join(tmpdir(), 'gaps-test-'));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -120,7 +122,7 @@ describe('e2e/gaps.mjs', () => {
   });
   it('the real registry is well formed and every entry names a gap journey with meta in drive.mjs', () => {
     const gaps = JSON.parse(readFileSync(join(ROOT, 'e2e/known-gaps.json'), 'utf8'));
-    const drive = readFileSync(join(ROOT, 'e2e/drive.mjs'), 'utf8');
+    const drive = driveText();
     for (const g of gaps) {
       expect(Object.keys(g).sort()).toEqual(['expires', 'fails_with', 'fixed_by', 'id', 'journey', 'owner', 'why']);
       expect(g.journey).toMatch(/^gap-/);
@@ -130,7 +132,7 @@ describe('e2e/gaps.mjs', () => {
   });
   it('each real fails_with is the journey\'s own text: `gap open (N of M): ` then words the journey writes, M its gap.want count', () => {
     const gaps = JSON.parse(readFileSync(join(ROOT, 'e2e/known-gaps.json'), 'utf8'));
-    const drive = readFileSync(join(ROOT, 'e2e/drive.mjs'), 'utf8');
+    const drive = driveText();
     expect(drive).toContain('`gap open (${open.length} of ${total}): ${open.join(\'; \')}`');
     for (const g of gaps) {
       const [, n, m, words] = g.fails_with.match(/^gap open \((\d+) of (\d+)\): (.+)$/) ?? [];

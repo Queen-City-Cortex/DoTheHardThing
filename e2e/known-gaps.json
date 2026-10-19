@@ -2,7 +2,7 @@
   {
     "id": "reload-mid-flow-restarts-step",
     "journey": "gap-reload-keeps-step",
-    "why": "A reload during Name (step 2 or 3) or Ask (item 2 or later) loses the position: Name's step and Ask's item index are component state in src/App.tsx, and a stored plan day opens on Welcome (resume in src/state.ts). The items and answers are kept, but the user lands on Welcome (on day one, the first-visit welcome) and has to step through again. reload-mid-naming asserts today's behavior; e2e/features/resilience.md describes it.",
+    "why": "A reload during Name (step 2 or 3) or Ask (item 2 or later) loses the position: Name's step and Ask's item index are component state in src/App/Name.tsx and src/App/Ask.tsx, and a stored plan day opens on Welcome (resume in src/state.ts). The items and answers are kept, but the user lands on Welcome (on day one, the first-visit welcome) and has to step through again. reload-mid-naming asserts today's behavior; e2e/features/resilience.md describes it.",
     "owner": "repo owner",
     "expires": "2026-11-18",
     "fixed_by": "a product call: whether a reload should keep the Name step and Ask item (for example by keeping them in the screen state and the store); if yes, reload-mid-naming changes with it",

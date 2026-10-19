@@ -135,7 +135,7 @@ describe('check:imports', () => {
     const dir = mkdtempSync(join(tmpdir(), 'check-imports-repo-'));
     dirs.push(dir);
     writeFileSync(join(dir, 'package.json'), JSON.stringify({ ...pkg, devDependencies: rest }));
-    for (const f of ['scripts/check-maps.mjs', 'scripts/check-workflows.mjs']) { mkdirSync(dirname(join(dir, f)), { recursive: true }); writeFileSync(join(dir, f), readFileSync(join(repo, f), 'utf8')); }
+    for (const f of ['scripts/check-maps.mjs', 'scripts/check-workflows.mjs', 'scripts/check-workflows/common.mjs']) { mkdirSync(dirname(join(dir, f)), { recursive: true }); writeFileSync(join(dir, f), readFileSync(join(repo, f), 'utf8')); }
     const r = spawnSync(process.execPath, [script], { encoding: 'utf8', env: { ...process.env, IMPORTS_ROOT: dir } });
     expect(r.status).toBe(1);
     expect(r.stderr).toContain('`acorn` is not in package.json');

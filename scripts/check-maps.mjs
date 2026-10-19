@@ -1,4 +1,5 @@
-// check:maps: the feature maps in e2e/features and the journeys in e2e/drive.mjs must agree. drive.mjs is parsed, never
+// check:maps: the feature maps in e2e/features and the journeys in e2e/drive.mjs must agree. drive.mjs and the files it
+// imports (e2e/drive/*.mjs and e2e/journeys/*.mjs: the journey groups, the helpers, the registry holding J) are parsed, never
 // run, so this needs no browser and does not load Playwright. Every problem prints file:line and the fix.
 //   - every journey in J (and in objects merged with Object.assign(J, x)) is 'name': journey({ id, feature, proves, strings }, fn)
 //     with a plain-literal meta (`note` is an allowed optional key); meta.id is its name; `feature` names a map; every `proves`
@@ -47,37 +48,45 @@ const PROSE_ALLOW = new Set([
   'close-first-yes', // a deleted journey, named on purpose: close-day.md says history-from-close-and-about replaced it
 ]);
 const rel = (f) => (f.startsWith(ROOT + path.sep) ? path.relative(ROOT, f) : f);
-const D = rel(DRIVE);
+const D = rel(DRIVE); // the entry file, named in messages that are about the whole set of journey files
 const problems = [];
 
-// ---- read drive.mjs ----
-const src = fs.readFileSync(DRIVE, 'utf8');
-const ast = acorn.parse(src, { ecmaVersion: 'latest', sourceType: 'module', locations: true });
+// ---- read drive.mjs and the files it imports (next to it: drive/ and journeys/) ----
+const DRIVE_FILES = [DRIVE, ...['drive', 'journeys'].flatMap((d) => {
+  const dir = path.join(path.dirname(DRIVE), d);
+  return fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith('.mjs')).sort().map((f) => path.join(dir, f)) : [];
+})];
+const parsed = DRIVE_FILES.map((file) => {
+  const src = fs.readFileSync(file, 'utf8');
+  return { file: rel(file), src, ast: acorn.parse(src, { ecmaVersion: 'latest', sourceType: 'module', locations: true }) };
+});
 const walk = (n, f) => {
   if (!n || typeof n.type !== 'string') return;
   f(n);
   for (const k in n) { const v = n[k]; if (Array.isArray(v)) v.forEach((c) => walk(c, f)); else if (v && typeof v.type === 'string') walk(v, f); }
 };
 const key = (p) => p.key.value ?? p.key.name;
-function literal(n) {
+function literal(n, at) {
   if (n.type === 'Literal') return n.value;
   if (n.type === 'TemplateLiteral' && !n.expressions.length) return n.quasis[0].value.cooked;
-  if (n.type === 'ArrayExpression') return n.elements.map(literal);
-  if (n.type === 'ObjectExpression' && n.properties.every((p) => p.type === 'Property' && !p.computed)) return Object.fromEntries(n.properties.map((p) => [key(p), literal(p.value)]));
-  throw new Error(`${D}:${n.loc.start.line}`);
+  if (n.type === 'ArrayExpression') return n.elements.map((e) => literal(e, at));
+  if (n.type === 'ObjectExpression' && n.properties.every((p) => p.type === 'Property' && !p.computed)) return Object.fromEntries(n.properties.map((p) => [key(p), literal(p.value, at)]));
+  throw new Error(`${at}:${n.loc.start.line}`);
 }
-const tops = {}; const objects = {};
-for (const st of ast.body) {
+// top-level functions and consts of every file by name (`export` or not), and the object literals among them with their file
+const tops = {}; const objects = {}; const objectFile = {};
+for (const { ast, file } of parsed) for (const top of ast.body) {
+  const st = top.type === 'ExportNamedDeclaration' && top.declaration ? top.declaration : top;
   const decls = st.type === 'FunctionDeclaration' ? [[st.id.name, st]] : st.type === 'VariableDeclaration' ? st.declarations.map((d) => [d.id.name, d.init]) : [];
-  for (const [name, init] of decls) { tops[name] = init; if (init?.type === 'ObjectExpression') objects[name] = init; }
+  for (const [name, init] of decls) { tops[name] = init; if (init?.type === 'ObjectExpression') { objects[name] = init; objectFile[name] = file; } }
 }
 // J plus every object merged into it with Object.assign(J, x); `J.x = ...` is reported, since the meta would be invisible here
-const merged = [{ name: 'J', node: objects.J }];
-walk(ast, (n) => {
+const merged = [{ name: 'J', node: objects.J, file: objectFile.J }];
+for (const { ast, src, file: D } of parsed) walk(ast, (n) => {
   if (n.type === 'CallExpression' && n.callee.type === 'MemberExpression' && n.callee.object.name === 'Object' && n.callee.property.name === 'assign' && n.arguments[0]?.name === 'J')
     for (const a of n.arguments.slice(1)) {
       const node = a.type === 'ObjectExpression' ? a : a.type === 'Identifier' ? objects[a.name] : undefined;
-      if (node) merged.push({ name: a.name ?? 'Object.assign', node });
+      if (node) merged.push({ name: a.name ?? 'Object.assign', node, file: a.type === 'Identifier' ? objectFile[a.name] : D });
       else problems.push(`${D}:${a.loc.start.line}: Object.assign(J, ${src.slice(a.start, a.end)}) merges journeys this check cannot read; write the journeys as an object literal assigned to a top-level const, then Object.assign(J, thatConst)`);
     }
   const alias = n.type === 'VariableDeclarator' && n.init?.type === 'Identifier' && n.init.name === 'J' ? n.id.name
@@ -86,18 +95,18 @@ walk(ast, (n) => {
   if (n.type === 'AssignmentExpression' && n.left.type === 'MemberExpression' && n.left.object.name === 'J')
     problems.push(`${D}:${n.loc.start.line}: a journey is added with J.x = ...; move it into const J = { ... } (or an object merged with Object.assign(J, x)) as 'name': journey({ ... }, fn), so its meta is checked`);
 });
-if (!objects.J) problems.push(`${D}: no const J = { ... }; the journeys must be the properties of J`);
+if (!objects.J) problems.push(`${rel(DRIVE)}: no const J = { ... }; the journeys must be the properties of J`);
 const journeys = new Map();
-for (const { name: obj, node } of merged) for (const p of node?.properties ?? []) {
+for (const { name: obj, node, file: D } of merged) for (const p of node?.properties ?? []) {
   if (p.type !== 'Property') { problems.push(`${D}:${p.loc.start.line}: a spread in ${obj} hides its journeys from this check; write each journey as 'name': journey({ ... }, fn)`); continue; }
   const name = key(p); const v = p.value; const line = p.loc.start.line;
   if (v.type !== 'CallExpression' || v.callee.name !== 'journey' || v.arguments.length !== 2) {
     problems.push(`${D}:${line}: journey '${name}' has no meta: write '${name}': journey({ id: '${name}', feature: '<map>', proves: [], strings: [] }, async (s) => { ... })`);
-    journeys.set(name, { name, line, fn: v, meta: null }); continue;
+    journeys.set(name, { name, line, file: D, fn: v, meta: null }); continue;
   }
   let meta = null;
-  try { meta = literal(v.arguments[0]); } catch (e) { problems.push(`${e.message}: the meta of '${name}' is not a plain literal; write it with strings, arrays and objects only (no variables, calls or templates with values)`); }
-  journeys.set(name, { name, line, fn: v.arguments[1], meta });
+  try { meta = literal(v.arguments[0], D); } catch (e) { problems.push(`${e.message}: the meta of '${name}' is not a plain literal; write it with strings, arrays and objects only (no variables, calls or templates with values)`); }
+  journeys.set(name, { name, line, file: D, fn: v.arguments[1], meta });
 }
 
 // copy ids a journey reaches: t('id'), the bare id or the exact text as a literal, in its own code and in every top-level helper or journey it uses
@@ -146,7 +155,7 @@ const mapList = [...maps.keys()].join(', ');
 
 // ---- meta ----
 for (const j of journeys.values()) {
-  const at = `${D}:${j.line}: '${j.name}'`; const m = j.meta;
+  const at = `${j.file}:${j.line}: '${j.name}'`; const m = j.meta;
   if (!m) continue;
   for (const k of Object.keys(m)) if (!META_KEYS.includes(k)) problems.push(`${at}: unknown meta key '${k}'; the keys are ${META_KEYS.join(', ')}`);
   for (const k of META_KEYS.slice(0, 4)) if (!(k in m)) problems.push(`${at}: meta has no '${k}'; write ${k}: ${k === 'id' ? `'${j.name}'` : k === 'feature' ? "'<map>'" : '[]'}`);
@@ -184,10 +193,10 @@ for (const j of journeys.values()) {
   const at = listedIn.get(j.name) ?? []; // every listing, so a second one in the same map counts
   const inMaps = new Set(at.map((l) => l.map)).size;
   const home = j.meta?.feature;
-  if (!at.length) problems.push(`${D}:${j.line}: '${j.name}' is in no map: add a "- **<What it shows>.** Run \`vdt journey ${j.name}\`. ..." line to the Driving section of ${rel(path.join(FEATURES, (home ?? '<feature>') + '.md'))}`);
+  if (!at.length) problems.push(`${j.file}:${j.line}: '${j.name}' is in no map: add a "- **<What it shows>.** Run \`vdt journey ${j.name}\`. ..." line to the Driving section of ${rel(path.join(FEATURES, (home ?? '<feature>') + '.md'))}`);
   else if (inMaps > 1) problems.push(`'${j.name}' is listed in ${inMaps} maps (${at.map((l) => l.at).join(', ')}); keep "Run \`vdt journey ${j.name}\`" in ${home}.md only and write "See \`${j.name}\` in [${home}.md](./${home}.md)" in the others`);
   else if (at.length > 1) problems.push(`'${j.name}' is listed ${at.length} times (${at.map((l) => l.at).join(', ')}); keep one "Run \`vdt journey ${j.name}\`" line, in ${home}.md`);
-  else if (home && at[0].map !== home) problems.push(`${at[0].at}: lists '${j.name}', but its meta.feature (${D}:${j.line}) is '${home}'; move the line to ${home}.md or change the meta`);
+  else if (home && at[0].map !== home) problems.push(`${at[0].at}: lists '${j.name}', but its meta.feature (${j.file}:${j.line}) is '${home}'; move the line to ${home}.md or change the meta`);
 }
 
 // ---- every sub-feature is proved ----
