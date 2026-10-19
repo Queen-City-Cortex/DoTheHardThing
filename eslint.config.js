@@ -96,7 +96,7 @@ const copySyntax = () => {
     .map((selector) => ({ selector, message: MOVE_TEXT }))
 }
 const UI_ONLY = { group: ['react', 'react-dom', 'react-dom/*', './App', './main'], message: 'Only .tsx files are UI. Keep React and App out of .ts modules: export a plain function and call it from App.tsx.' }
-const TESTS = ['**/*.test.ts', '**/*.test.tsx']
+const TESTS = ['**/*.test.ts', '**/*.test.tsx', '**/*.testlib.ts'] // *.testlib.ts: helpers a split test file shares (vitest runs only *.test.ts)
 
 /** The no-restricted-* rules for one file: every owner's ban except the file's own, plus its import limits. */
 function boundaries({ file, ui = false } = {}) {
