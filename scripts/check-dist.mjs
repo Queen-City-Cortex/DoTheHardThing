@@ -1,21 +1,21 @@
 // check:dist: run after `npm run build`. Fails when the built PWA and hosting config disagree with each other:
-// a file the page needs is missing from the service worker precache (so it fails offline), the manifest theme_color
-// differs from the page's theme-color, public/_headers does not give `/`, `/index.html` and `/sw.js` a no-cache
-// Cache-Control, or a manifest icon is missing from dist. Every failure names the file and the fix.
+// a file the page needs is missing from the service worker precache (so it fails offline), the manifest theme_color or
+// background_color, or the built CSS's light --paper, differs from the page's light theme-color (index.html owns it),
+// the manifest locks the installed app's orientation, public/_headers does not give `/`, `/index.html` and `/sw.js` a
+// no-cache Cache-Control, a path class the app serves
+// lacks a security header of POLICY (scripts/headers-policy.mjs) or has another value, the CSP is enforcing (not
+// Report-Only), has a report endpoint, misses a beacon origin or names an origin off CSP_ORIGINS, a manifest icon is missing
+// from dist, or robots.txt is missing, is not plain robots syntax, or _headers gives it a non-text/plain Content-Type. Every failure names the file and the fix.
 // Assumes the site is served from the root (vite `base: '/'`): references are matched as /path.
 // Usage: node scripts/check-dist.mjs [distDir]
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { POLICY, cspProblems, display, headersFor, norm, parseHeaders } from './headers-policy.mjs';
 
 const dist = process.argv[2] ?? 'dist';
 const problems = [];
-const notes = [];
 const read = (f) => readFileSync(join(dist, f), 'utf8');
 if (!existsSync(join(dist, 'index.html'))) { console.error(`check:dist: ${dist}/index.html not found; run \`npm run build\` first`); process.exit(1); }
-
-// Owner decision pending: the manifest theme_color is the icon's dark color (#1f2329) and the page's light theme-color is
-// the paper color (#f4f3ef). Current behavior is kept, and reported as a note, until the owner picks one; then delete this.
-const THEME_COLOR_PENDING_OWNER_DECISION = '#1f2329';
 
 const html = read('index.html');
 const local = (u) => u.startsWith('/') && !u.startsWith('//');
@@ -44,17 +44,26 @@ for (const [f, why] of needed) {
   }
 }
 
-// 2. Manifest: theme_color matches the page's theme-color, and every icon exists.
+// 2. Manifest: theme_color and background_color match the page's light theme-color (the paper the page is drawn on, so
+//    the installed app's title bar and splash are the page's color), and every icon exists.
 const manifest = JSON.parse(read('manifest.webmanifest'));
 const attr = (tag, name) => tag.match(new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`))?.slice(1).find((v) => v !== undefined);
 const metaColors = [...html.matchAll(/<meta\b[^>]*>/g)].map((m) => m[0]).filter((t) => attr(t, 'name') === 'theme-color').map((t) => ({ color: (attr(t, 'content') ?? '').toLowerCase(), media: attr(t, 'media') ?? '' }));
 const pageColor = (metaColors.find((m) => !m.media) ?? metaColors.find((m) => m.media.includes('light')))?.color;
-const manifestColor = String(manifest.theme_color ?? '').toLowerCase();
 if (pageColor === undefined) problems.push('index.html has no <meta name="theme-color">: add one (light theme-color) to index.html');
-else if (manifestColor !== pageColor) {
-  const msg = `manifest theme_color ${manifestColor} differs from index.html <meta name="theme-color"> ${pageColor}: make manifest.theme_color in vite.config.ts equal the light theme-color`;
-  if (manifestColor === THEME_COLOR_PENDING_OWNER_DECISION) notes.push(`${msg} (allowed for now: THEME_COLOR_PENDING_OWNER_DECISION)`);
-  else problems.push(msg);
+else {
+  for (const key of ['theme_color', 'background_color']) {
+    const color = String(manifest[key] ?? '(none)').toLowerCase();
+    if (color !== pageColor) problems.push(`manifest ${key} ${color} differs from index.html <meta name="theme-color"> ${pageColor}: make manifest.${key} in vite.config.ts equal the light theme-color`);
+  }
+  // the first --paper in the built CSS is the light one (dark mode overrides it later, inside a media query)
+  const paper = assets.filter((f) => f.endsWith('.css')).map((f) => read(`assets/${f}`).match(/--paper:\s*(#[0-9a-fA-F]{3,8})/)?.[1]).find(Boolean)?.toLowerCase();
+  if (paper !== pageColor) problems.push(`the built CSS's light --paper is ${paper ?? '(not found)'}, but index.html <meta name="theme-color"> is ${pageColor}: keep --paper in src/index.css and the light theme-color the same color`);
+}
+// the installed app follows the device's rotation: an orientation lock (portrait or landscape, any variant) was dropped on
+// purpose after a landscape layout probe; `any` and `natural` are no lock
+if (manifest.orientation !== undefined && !['any', 'natural'].includes(manifest.orientation)) {
+  problems.push(`manifest orientation ${JSON.stringify(manifest.orientation)} locks the installed app's rotation: remove orientation from the manifest in vite.config.ts (the platform default applies), or, if the lock is a decision, write it down in docs/architecture.md (Hosting) and change this check`);
 }
 for (const icon of manifest.icons ?? []) {
   if (typeof icon.src !== 'string') { problems.push(`a manifest icon has no src: fix manifest.icons in vite.config.ts`); continue; }
@@ -65,28 +74,57 @@ for (const icon of manifest.icons ?? []) {
 // 3. _headers: the app shell must revalidate. Cloudflare matches the request path, and the app is served at `/`,
 //    so an /index.html rule never applies to it (measured with wrangler dev: `/` got the default Cache-Control).
 //    `/`, `/index.html` and `/sw.js` each need a matching rule whose Cache-Control says no-cache.
-const headersFile = existsSync(join(dist, '_headers')) ? read('_headers') : '';
-const rules = []; // { re, headers: Map(lowercase name -> value) }
-for (const line of headersFile.split('\n')) {
-  if (line.startsWith('/')) rules.push({ re: new RegExp('^' + line.trim().replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/:\w+/g, '[^/]+') + '$'), headers: new Map() });
-  else if (/^\s+[\w-]+:/.test(line) && rules.length) {
-    const i = line.indexOf(':');
-    rules.at(-1).headers.set(line.slice(0, i).trim().toLowerCase(), line.slice(i + 1).trim());
-  }
-}
-// Cloudflare applies every matching rule and joins duplicate header values with a comma
-const cacheControl = (path) => rules.filter((r) => r.re.test(path)).map((r) => r.headers.get('cache-control')).filter(Boolean).join(', ');
+const { rules, errors } = parseHeaders(existsSync(join(dist, '_headers')) ? read('_headers') : '');
+for (const e of errors) problems.push(`public/_headers ${e}: fix the line (see the parser in scripts/headers-policy.mjs)`);
 for (const path of ['/', '/index.html', '/sw.js']) {
-  const value = cacheControl(path);
+  const value = headersFor(rules, path).get('cache-control') ?? '';
   if (!/\bno-cache\b/.test(value) || /\bimmutable\b|\bmax-age=[1-9]/.test(value)) {
     problems.push(`public/_headers gives ${path} \`Cache-Control: ${value || '(nothing)'}\`, not no-cache alone: give ${path} a rule with \`Cache-Control: no-cache\` and no other matching rule that caches it (Cloudflare matches the request path, so an /index.html rule does not apply to \`/\`)`);
   }
 }
 
-for (const n of notes) console.log(`check:dist note: ${n}`);
+// 4. _headers: every path class the app serves gets each security header in POLICY (scripts/headers-policy.mjs) with
+//    exactly its value: the shell, the service worker, the manifest, a hashed asset, and an unknown path (the SPA
+//    fallback serves index.html there, and Cloudflare matches the request path, not the file).
+const js = assets.find((f) => f.endsWith('.js'));
+const paths = ['/', '/sw.js', '/manifest.webmanifest', js ? `/assets/${js}` : '/assets/index.js', '/nope'];
+for (const [name, want] of Object.entries(POLICY)) {
+  const wrong = new Map(); // what the path gets -> the paths that get it
+  for (const path of paths) {
+    const got = headersFor(rules, path).get(name);
+    if (norm(got) !== want) { const k = got === undefined ? `no ${display(name)}` : `\`${display(name)}: ${got}\``; wrong.set(k, [...(wrong.get(k) ?? []), path]); }
+  }
+  for (const [k, ps] of wrong) problems.push(`public/_headers gives ${ps.join(', ')} ${k}, want \`${display(name)}: ${want}\`: give the \`/*\` rule exactly that line, and no other matching rule the same header (POLICY in scripts/headers-policy.mjs)`);
+}
+
+// 4b. The CSP stays Report-Only: enforcing it is a later owner decision (docs/architecture.md, Hosting), so an enforcing
+//     header fails here until that decision changes this check. The Report-Only value has no report endpoint, keeps the
+//     two beacon origins in their directives, and names no origin outside CSP_ORIGINS (scripts/headers-policy.mjs).
+for (const path of paths) {
+  const enforcing = headersFor(rules, path).get('content-security-policy');
+  if (enforcing !== undefined) problems.push(`public/_headers gives ${path} an enforcing \`Content-Security-Policy\`: send it as \`Content-Security-Policy-Report-Only\` only; enforcing is a later owner decision, made after a clean report-only soak (docs/architecture.md, Hosting), not a header edit`);
+}
+const cspValues = new Set(paths.map((p) => headersFor(rules, p).get('content-security-policy-report-only')).filter((v) => v !== undefined));
+for (const v of cspValues) for (const p of cspProblems(v)) problems.push(`the Content-Security-Policy-Report-Only in public/_headers ${p}`);
+for (const p of cspProblems(POLICY['content-security-policy-report-only'])) problems.push(`CSP_DIRECTIVES in scripts/headers-policy.mjs ${p}`);
+
+// 5. robots.txt: a real file, so Cloudflare serves it (text/plain) before the SPA fallback would answer the app HTML.
+//    Cheap checks only: it exists, has a User-agent line, every other line is a `Field: value` or a comment, and holds no
+//    HTML; _headers does not give it another Content-Type. The service worker never serves it to crawlers (they run none).
+if (!existsSync(join(dist, 'robots.txt'))) problems.push(`${dist}/robots.txt is missing, so /robots.txt gets the app HTML from the SPA fallback: add public/robots.txt (User-agent: * and Allow: /)`);
+else {
+  const robots = read('robots.txt');
+  const bad = robots.split('\n').map((l) => l.replace(/#.*/, '').trim()).filter((l) => l && !/^[A-Za-z][A-Za-z-]*\s*:/.test(l));
+  if (/<html/i.test(robots)) problems.push(`${dist}/robots.txt contains <html, not robots rules: put plain robots lines in public/robots.txt (User-agent: * and Allow: /)`);
+  else if (!/^user-agent\s*:/im.test(robots)) problems.push(`${dist}/robots.txt has no User-agent line: start public/robots.txt with \`User-agent: *\``);
+  else if (bad.length) problems.push(`${dist}/robots.txt has a line that is not \`Field: value\` or a comment (${JSON.stringify(bad[0])}): fix public/robots.txt`);
+}
+const robotsType = headersFor(rules, '/robots.txt').get('content-type');
+if (robotsType !== undefined && !/^text\/plain\b/i.test(robotsType.trim())) problems.push(`public/_headers gives /robots.txt \`Content-Type: ${robotsType}\`: remove that line, so Cloudflare serves the file as text/plain`);
+
 if (problems.length) {
   for (const p of problems) console.error(`check:dist FAIL: ${p}`);
   console.error(`check:dist: ${problems.length} problem(s) in ${dist}`);
   process.exit(1);
 }
-console.log(`check:dist OK: ${precache.size} precache entries cover ${needed.size} needed files; manifest icons present; the app shell is served with no-cache`);
+console.log(`check:dist OK: ${precache.size} precache entries cover ${needed.size} needed files; manifest colors match the page; no orientation lock; manifest icons present; the app shell is served with no-cache; ${paths.length} path classes get the ${Object.keys(POLICY).length} security headers (the CSP Report-Only, not enforcing); robots.txt is plain robots rules`);

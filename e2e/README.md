@@ -55,6 +55,20 @@ To add a journey, add an entry to `J` (and `START` if it needs a different start
 
 `vdt journey` always points at the local preview (it exports `VDT_URL` itself). To drive the deployed site run the script directly: `VDT_URL=https://dothehardthing.app VDT_RUN_ID=live node $S/drive.mjs $(node $S/drive.mjs --list)`. Whenever the URL is not `http://127.*`, every journey answers `**/api/event` locally, so a live run never adds to the real analytics counts. The full suite takes about 10 to 15 minutes: start it detached (`nohup … &`, log to a file) so closing your terminal does not kill the preview server or the run, and poll the log. Allow a retry after about 30 s right after a deploy (propagation).
 
+### CSP watch
+
+`e2e/csp-watch.mjs` is a preload that records every Content-Security-Policy violation in every page of every journey, without editing `drive.mjs`. It wraps `chromium.launch`: each new context gets an init script that turns the page's `securitypolicyviolation` events into console lines, and the preload appends to the file named by `CSP_LOG` one `context <url>` line per page load, one `violation <directive> <blocked URL> <page>` line per event, and one `console ...` line per browser console message about CSP (usually the same violation again). Any line that is not a `context` line is a violation; context lines with nothing else mean the watcher saw the pages and none violated the policy. It needs a server that sends the `_headers` policy: `vite preview` sends none, so run it against `wrangler dev`, from a copy, so nothing is written into your checkout (no credentials needed; the local server's newest compatibility date may be older than `wrangler.jsonc`'s, so pass one it supports):
+
+```bash
+npm run build
+W=$(mktemp -d); mkdir -p $W/src; cp -r wrangler.jsonc worker dist $W/; cp src/events.ts $W/src/
+(cd $W && npx --yes wrangler@4.86.0 dev --local --ip 127.0.0.1 --port <port> --inspector-port <another port> --compatibility-date 2026-05-03) &
+CSP_LOG=/tmp/csp.log NODE_OPTIONS="--import=$PWD/e2e/csp-watch.mjs" VDT_URL=http://127.0.0.1:<port> TZ=UTC node e2e/run.mjs --workers 2
+grep -c '^violation' /tmp/csp.log   # the violation count: want 0, with context lines present (a `console` line is Chromium's own message about CSP and usually repeats a violation; it is also counted by `grep -vc '^context'`)
+```
+
+`NODE_OPTIONS` is what reaches the `drive.mjs` children `run.mjs` spawns; `node --import ./e2e/csp-watch.mjs e2e/run.mjs` would load it only in the runner. One journey: `... node --import ./e2e/csp-watch.mjs e2e/drive.mjs first-visit`. The preload refuses to start without `CSP_LOG`. A positive control: in the copy, change a directive in `dist/_headers` to `'none'` (for example `font-src 'none'; style-src 'none'`), restart wrangler and run `first-visit`: the log gets violation lines, while the journey still passes (Report-Only blocks nothing). Stop wrangler afterwards (and its `workerd` children).
+
 ## Known gaps
 
 `e2e/known-gaps.json` lists the gaps that wait on a decision by the owner, each with a `gap-*` journey in `drive.mjs` that asserts the behavior we want, so the journey fails while the gap is open. It is for owner-blocked gaps only: a bug gets fixed, not registered. `vdt list` (and so `node e2e/run.mjs`, `npm run journeys` and CI) leaves the `gap-*` journeys out; `node e2e/drive.mjs --list-gaps` lists them, and `vdt journey gap-<name>` still runs one by name.

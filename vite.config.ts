@@ -31,10 +31,12 @@ export default defineConfig(({ mode }) => ({
         name: 'Do The Hard Thing',
         short_name: 'Hard Thing',
         description: "A morning method: name what's uncomfortable, pick one thing, and protect one block.",
-        theme_color: '#1f2329',
+        // The light <meta name="theme-color"> in index.html owns this color (the paper, --paper in src/index.css). These
+        // copies stay literal because the config has no Node types to read index.html with; `npm run check:dist` fails when
+        // theme_color, background_color or the built CSS's --paper differ from that meta tag.
+        theme_color: '#f4f3ef',
         background_color: '#f4f3ef',
         display: 'standalone',
-        orientation: 'portrait',
         start_url: '/',
         icons: [
           { src: 'pwa-192.png', sizes: '192x192', type: 'image/png' },

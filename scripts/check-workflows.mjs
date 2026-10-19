@@ -12,7 +12,8 @@
 //      the workflow sets contents: read
 //   d  every `uses:` is pinned to a 40-hex commit sha (a trailing version comment is fine)
 //   e  the journeys step runs `--fast` only when github.event_name == 'pull_request', so a push runs every journey
-//   f  the check job runs `npm run check` and a `deploy --dry-run`; the deploy job verifies with `npm run verify:live`;
+//   f  the check job runs `npm run check` and a `deploy --dry-run`; the deploy job verifies with `npm run verify:live`
+//      passing `--post-deploy` (without it the checks of this build's headers and manifest only print PENDING);
 //      no run string sends data (`-X POST`, `--request POST`, or curl or wget with `--data`, `-d`, `--post-data`) and no
 //      value names POST and api/event together
 //   g  Wrangler's version is the workflow-level env WRANGLER_VERSION (an exact x.y.z); every wrangler invocation (`npx ...
@@ -263,7 +264,9 @@ function checkCi(f, jobs, jobAt) {
   // f: the loop, the preflight and the read-only verification
   if (check && !runs('check').some((r) => /\bnpm run check(?![:\w-])/.test(r))) fail('f', jobAt('check'), 'job check does not run `npm run check`: add `- run: npm run check`');
   if (check && !runs('check').some((r) => /deploy\s+--dry-run/.test(r))) fail('f', jobAt('check'), 'job check has no Wrangler dry run: add a step that runs npx --yes "wrangler@${WRANGLER_VERSION}" deploy --dry-run --outdir "$RUNNER_TEMP/wrangler-out"');
-  if (!runs('deploy').some((r) => /\bnpm run verify:live\b/.test(r))) fail('f', D, 'job deploy does not verify with `npm run verify:live`: add `- run: npm run verify:live -- --retries 10` after the deploy step (not an inline curl)');
+  const verifies = runs('deploy').filter((r) => /\bnpm run verify:live\b/.test(r));
+  if (!verifies.length) fail('f', D, 'job deploy does not verify with `npm run verify:live`: add `- run: npm run verify:live -- --retries 10 --post-deploy` after the deploy step (not an inline curl)');
+  else if (!verifies.some((r) => /\bnpm run verify:live\s+--\s(?:[^;&|\n]*\s)?--post-deploy(?![\w-])/.test(r))) fail('f', line('verify:live', D), 'job deploy runs `npm run verify:live` without `--post-deploy`: add it (`npm run verify:live -- --retries 10 --post-deploy`); without it the live header and manifest checks would only be PENDING and never enforced');
   if (runs('deploy').some((r) => /\bcurl\b/.test(r))) fail('f', line('curl', D), 'job deploy runs curl: verify the live site only with `npm run verify:live`, which is read-only and checks the bytes');
 
   // g: one version, set at workflow level

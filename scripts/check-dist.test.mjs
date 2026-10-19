@@ -7,21 +7,24 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const SCRIPT = fileURLToPath(new URL('./check-dist.mjs', import.meta.url));
-const HEADERS = '/\n  Cache-Control: no-cache\n/sw.js\n  Cache-Control: no-cache\n/index.html\n  Cache-Control: no-cache\n/assets/*\n  Cache-Control: public, max-age=31536000, immutable\n';
+const CSP = "default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; connect-src 'self' https://cloudflareinsights.com; img-src 'self'; style-src 'self'; font-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+const SECURITY = `  X-Content-Type-Options: nosniff\n  Referrer-Policy: strict-origin-when-cross-origin\n  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()\n  X-Frame-Options: DENY\n  Content-Security-Policy-Report-Only: ${CSP}\n`;
+const HEADERS = '/*\n' + SECURITY + '/\n  Cache-Control: no-cache\n/sw.js\n  Cache-Control: no-cache\n/index.html\n  Cache-Control: no-cache\n/assets/*\n  Cache-Control: public, max-age=31536000, immutable\n';
 const dirs = [];
 
-function build({ precache = ['assets/app.js', 'assets/app.css', 'assets/font.woff2', 'index.html'], headers = HEADERS, themeColor = '#f4f3ef', icon = true, meta = '<meta name="theme-color" content="#f4f3ef">', extraLink = '' } = {}) {
+function build({ precache = ['assets/app.js', 'assets/app.css', 'assets/font.woff2', 'index.html'], headers = HEADERS, themeColor = '#f4f3ef', backgroundColor = '#f4f3ef', css = '@font-face{src:url(/assets/font.woff2)}:root{--paper:#f4f3ef}@media (prefers-color-scheme:dark){:root{--paper:#15181d}}', icon = true, meta = '<meta name="theme-color" content="#f4f3ef">', extraLink = '', manifestExtra = {}, robots = 'User-agent: *\nAllow: /\n' } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'check-dist-'));
   dirs.push(dir);
   mkdirSync(join(dir, 'assets'));
   writeFileSync(join(dir, 'index.html'), `<html><head>${meta}${extraLink}<script type="module" src="/assets/app.js"></script><link rel="stylesheet" href="/assets/app.css"></head><body></body></html>`);
   writeFileSync(join(dir, 'assets/app.js'), '');
-  writeFileSync(join(dir, 'assets/app.css'), '@font-face{src:url(/assets/font.woff2)}');
+  writeFileSync(join(dir, 'assets/app.css'), css);
   writeFileSync(join(dir, 'assets/font.woff2'), '');
   if (icon) writeFileSync(join(dir, 'pwa-192.png'), '');
-  writeFileSync(join(dir, 'manifest.webmanifest'), JSON.stringify({ theme_color: themeColor, icons: [{ src: 'pwa-192.png', sizes: '192x192' }] }));
+  writeFileSync(join(dir, 'manifest.webmanifest'), JSON.stringify({ theme_color: themeColor, background_color: backgroundColor, icons: [{ src: 'pwa-192.png', sizes: '192x192' }], ...manifestExtra }));
   writeFileSync(join(dir, 'sw.js'), `precacheAndRoute([${precache.map((u) => `{url:"${u}",revision:null}`).join(',')}])`);
   writeFileSync(join(dir, '_headers'), headers);
+  if (robots !== null) writeFileSync(join(dir, 'robots.txt'), robots);
   return spawnSync(process.execPath, [SCRIPT, dir], { encoding: 'utf8' });
 }
 
@@ -40,7 +43,7 @@ describe('check:dist', () => {
     expect(r.stderr).toContain("add 'woff2' to workbox.globPatterns in vite.config.ts");
   });
   it('fails when `/` has no no-cache rule, even if /index.html has one', () => {
-    const r = build({ headers: '/index.html\n  Cache-Control: no-cache\n/sw.js\n  Cache-Control: no-cache\n' });
+    const r = build({ headers: '/*\n' + SECURITY + '/index.html\n  Cache-Control: no-cache\n/sw.js\n  Cache-Control: no-cache\n' });
     expect(r.status).toBe(1);
     expect(r.stderr).toContain('public/_headers gives / `Cache-Control: (nothing)`, not no-cache alone');
   });
@@ -54,11 +57,23 @@ describe('check:dist', () => {
     expect(r.status).toBe(1);
     expect(r.stderr).toContain('manifest icon pwa-192.png');
   });
-  it('fails when theme_color differs from the page, except the parked owner decision', () => {
+  it('fails when theme_color differs from the page, the old charcoal included (no exception)', () => {
     expect(build({ themeColor: '#123456' }).status).toBe(1);
-    const parked = build({ themeColor: '#1f2329' });
-    expect(parked.status).toBe(0);
-    expect(parked.stdout).toContain('THEME_COLOR_PENDING_OWNER_DECISION');
+    const old = build({ themeColor: '#1f2329' });
+    expect(old.status).toBe(1);
+    expect(old.stderr).toContain('manifest theme_color #1f2329 differs from index.html <meta name="theme-color"> #f4f3ef: make manifest.theme_color in vite.config.ts equal the light theme-color');
+    expect(old.stdout).toBe('');
+  });
+  it('fails when background_color differs from the page', () => {
+    const r = build({ backgroundColor: '#ffffff' });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('manifest background_color #ffffff differs');
+  });
+  it('fails when the light --paper in the CSS differs from the page, and when there is none', () => {
+    const r = build({ css: '@font-face{src:url(/assets/font.woff2)}:root{--paper:#ffffff}' });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain("the built CSS's light --paper is #ffffff");
+    expect(build({ css: '@font-face{src:url(/assets/font.woff2)}' }).stderr).toContain("light --paper is (not found)");
   });
 });
 
@@ -81,5 +96,126 @@ describe('check:dist, more cases', () => {
     const r = build({ headers: HEADERS + '/*\n  Cache-Control: public, max-age=31536000, immutable\n' });
     expect(r.status).toBe(1);
     expect(r.stderr).toContain('not no-cache alone');
+  });
+});
+
+describe('check:dist, security headers', () => {
+  it('fails when no rule gives the security headers (the state before the `/*` rule), naming the fix', () => {
+    const r = build({ headers: HEADERS.replace('/*\n' + SECURITY, '') });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('public/_headers gives /, /sw.js, /manifest.webmanifest, /assets/app.js, /nope no X-Frame-Options, want `X-Frame-Options: DENY`: give the `/*` rule exactly that line');
+    expect(r.stderr).toContain('no X-Content-Type-Options');
+    expect(r.stderr).toContain('no Referrer-Policy');
+    expect(r.stderr).toContain('no Permissions-Policy');
+  });
+  it('fails when only `/` gets them: the SPA fallback path and the assets do not', () => {
+    const r = build({ headers: HEADERS.replace('/*\n' + SECURITY, '').replace('/\n  Cache-Control: no-cache\n', '/\n  Cache-Control: no-cache\n' + SECURITY) });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('gives /sw.js, /manifest.webmanifest, /assets/app.js, /nope no X-Frame-Options');
+    expect(r.stderr).not.toContain('gives /, ');
+  });
+  it('fails when a value differs from the policy', () => {
+    const r = build({ headers: HEADERS.replace('X-Frame-Options: DENY', 'X-Frame-Options: SAMEORIGIN') });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('`X-Frame-Options: SAMEORIGIN`, want `X-Frame-Options: DENY`');
+  });
+  it('fails when a second rule gives the same header (Cloudflare joins the values)', () => {
+    const r = build({ headers: HEADERS + '/assets/*\n  X-Content-Type-Options: nosniff\n' });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('gives /assets/app.js `X-Content-Type-Options: nosniff, nosniff`');
+  });
+  it('fails when a matching rule detaches one', () => {
+    const r = build({ headers: HEADERS + '/sw.js\n  ! Referrer-Policy\n' });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('gives /sw.js no Referrer-Policy');
+  });
+  it('fails on a line the parser cannot read', () => {
+    const r = build({ headers: HEADERS + 'https://example.com/*\n  X-Frame-Options: DENY\n' });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('is not a path rule');
+  });
+});
+
+describe('check:dist, the Report-Only CSP', () => {
+  const csp = (from, to) => HEADERS.replace(from, to);
+  it('fails when the `/*` rule has no Report-Only CSP (the state before it), naming the fix', () => {
+    const r = build({ headers: csp(`  Content-Security-Policy-Report-Only: ${CSP}\n`, '') });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('public/_headers gives /, /sw.js, /manifest.webmanifest, /assets/app.js, /nope no Content-Security-Policy-Report-Only, want `Content-Security-Policy-Report-Only: default-src');
+  });
+  it('fails on an enforcing CSP, saying enforcing is an owner decision', () => {
+    const r = build({ headers: csp('Content-Security-Policy-Report-Only:', 'Content-Security-Policy:') });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('public/_headers gives / an enforcing `Content-Security-Policy`: send it as `Content-Security-Policy-Report-Only` only; enforcing is a later owner decision');
+    const both = build({ headers: HEADERS + '/\n  Content-Security-Policy: ' + CSP + '\n' });
+    expect(both.status).toBe(1);
+    expect(both.stderr).toContain('gives / an enforcing `Content-Security-Policy`');
+    expect(both.stderr).not.toContain('gives /nope an enforcing');
+  });
+  it('fails on a report-uri or report-to (the repo has no endpoint)', () => {
+    for (const d of ['report-uri https://r.example/csp', 'report-to csp']) {
+      const r = build({ headers: csp("frame-ancestors 'none'", `frame-ancestors 'none'; ${d}`) });
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain(`the Content-Security-Policy-Report-Only in public/_headers has ${d.split(' ')[0]}, but the repo has no report endpoint: remove it`);
+    }
+  });
+  it('fails when a beacon origin is dropped from its directive', () => {
+    const r = build({ headers: csp("connect-src 'self' https://cloudflareinsights.com", "connect-src 'self'") });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('connect-src does not allow https://cloudflareinsights.com, which the Cloudflare Web Analytics beacon needs: add it to connect-src');
+  });
+  it('fails on an origin or source off the allowlist, data: and unsafe-inline included', () => {
+    for (const src of ['https://cdn.example', 'data:', "'unsafe-inline'"]) {
+      const r = build({ headers: csp("img-src 'self'", `img-src 'self' ${src}`) });
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain(`img-src allows \`${src}\`: only 'self', 'none' and the origins in CSP_ORIGINS (scripts/headers-policy.mjs) may appear`);
+    }
+  });
+});
+
+describe('check:dist, orientation', () => {
+  it('fails on the old portrait lock, naming the fix', () => {
+    const r = build({ manifestExtra: { orientation: 'portrait' } });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('manifest orientation "portrait" locks the installed app\'s rotation: remove orientation from the manifest in vite.config.ts (the platform default applies), or, if the lock is a decision, write it down in docs/architecture.md (Hosting)');
+  });
+  it('fails on every lock value', () => {
+    for (const o of ['portrait-primary', 'portrait-secondary', 'landscape', 'landscape-primary', 'landscape-secondary']) {
+      const r = build({ manifestExtra: { orientation: o } });
+      expect(r.status, o).toBe(1);
+      expect(r.stderr).toContain(`manifest orientation "${o}" locks`);
+    }
+  });
+  it('passes with any, natural, or no orientation', () => {
+    for (const o of ['any', 'natural']) expect(build({ manifestExtra: { orientation: o } }).status, o).toBe(0);
+    expect(build().stdout).toContain('no orientation lock');
+  });
+});
+
+describe('check:dist, robots.txt', () => {
+  it('fails when robots.txt is missing (the state before it: the SPA fallback answers HTML), naming the fix', () => {
+    const r = build({ robots: null });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('/robots.txt is missing, so /robots.txt gets the app HTML from the SPA fallback: add public/robots.txt (User-agent: * and Allow: /)');
+  });
+  it('fails when it holds HTML', () => {
+    const r = build({ robots: '<!doctype html><html><body><div id="root"></div></body></html>\n' });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('robots.txt contains <html, not robots rules');
+  });
+  it('fails without a User-agent line, and on a line that is not Field: value', () => {
+    expect(build({ robots: 'Allow: /\n' }).stderr).toContain('robots.txt has no User-agent line');
+    const r = build({ robots: 'User-agent: *\nAllow /\n' });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('robots.txt has a line that is not `Field: value` or a comment ("Allow /")');
+  });
+  it('passes with comments and blank lines', () => {
+    expect(build({ robots: '# crawlers\nUser-agent: *\n\nAllow: / # all\n' }).status).toBe(0);
+  });
+  it('fails when _headers would serve it as HTML', () => {
+    const r = build({ headers: HEADERS + '/robots.txt\n  Content-Type: text/html\n' });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('public/_headers gives /robots.txt `Content-Type: text/html`: remove that line');
+    expect(build({ headers: HEADERS + '/robots.txt\n  Content-Type: text/plain; charset=utf-8\n' }).status).toBe(0);
   });
 });
