@@ -2,7 +2,7 @@
 
 The app is a single-screen offline-first PWA (Vite + React + TS, vite-plugin-pwa). No accounts and no server-side state; the only backend is the one-endpoint Worker for anonymous counts, which the journeys stub. All app state is one localStorage key, `one-thing:v3`. (`one-thing:events` holds only which anonymous count names went out today; see `features/analytics.md`.) The screen depends on that state and on the **local clock**, so every journey runs in a fresh browser context (empty storage, no service worker yet) with timezone `America/New_York` and a Playwright fake clock paused at a fixed local time.
 
-The harness is `e2e/vdt` (bash) plus `e2e/drive.mjs` (Playwright journeys). It uses the repo's own devDependencies `playwright` and `@playwright/test` 1.64.1 and their own Chromium (`npx playwright install chromium`). Run every command from the repo root.
+The harness is `e2e/vdt` (bash) plus `e2e/drive.mjs` (the Playwright journey runner: a thin entry that merges the journey groups in `e2e/journeys/` into `J`; the session, the shared actions, the registry and the per-journey context are in `e2e/drive/`). It uses the repo's own devDependencies `playwright` and `@playwright/test` 1.64.1 and their own Chromium (`npx playwright install chromium`). Run every command from the repo root.
 
 ## Launch
 
@@ -47,9 +47,9 @@ Stable handles from `src/App.tsx`:
 - The progress dots have the aria-label `Step N of 3`.
 - About: the `Reminder time` input (by label), the `Off` button, the reminder status line (`role=status`), and the privacy line (see `features/analytics.md`, `an-privacy-note`). The analytics journeys (`analytics-*`) record requests in `NET` and route `**/api/event` themselves.
 
-Per-journey context options (for example notification `permissions`, the `migrate-v2` `seed`, a `viewport` with `mobile: true` for touch emulation, or a `before(context)` hook for init scripts and network rules) go in `CONTEXT` in `e2e/drive.mjs`. The default is no grants and no seed. The clock belongs to the context, so a second tab (`s.context.newPage()`, as in `two-tabs`) shares it; set `s.page` to the tab being driven and the evidence follows it.
+Per-journey context options (for example notification `permissions`, the `migrate-v2` `seed`, a `viewport` with `mobile: true` for touch emulation, or a `before(context)` hook for init scripts and network rules) go in `CONTEXT` in `e2e/drive/context.mjs`. The default is no grants and no seed. The clock belongs to the context, so a second tab (`s.context.newPage()`, as in `two-tabs`) shares it; set `s.page` to the tab being driven and the evidence follows it.
 
-To add a journey, add an entry to `J` (and `START` if it needs a different start time) in `e2e/drive.mjs`, wrapped as `'name': journey({ id: 'name', feature, proves, strings }, async (s) => { ... })` (see the comment above `J`), and list it with a "Run `vdt journey name`" line in the one map its `feature` names. Reuse `throughToPick` and `startBlock`, and wrap each user action in `s.step(label, fn)` so it leaves evidence.
+To add a journey, add an entry to the group object in `e2e/journeys/` that fits it (a new group is a new file, merged into `J` with `Object.assign(J, group)` in `e2e/drive.mjs`; `J` itself is in `e2e/drive/registry.mjs`), and `START` if it needs a different start time (`e2e/drive/context.mjs`), wrapped as `'name': journey({ id: 'name', feature, proves, strings }, async (s) => { ... })` (see the comment above `J` in `e2e/drive/registry.mjs`), and list it with a "Run `vdt journey name`" line in the one map its `feature` names. Reuse `throughToPick` and `startBlock`, and wrap each user action in `s.step(label, fn)` so it leaves evidence.
 
 ### Running against the live site, and long runs
 
@@ -96,7 +96,7 @@ node scripts/mutate.mjs --check                                 # only check the
 
 The `quote-cut` row (a talk quote loses a word) is caught only by the transcript check, so set `FERRISS_TRANSCRIPT` to the talk transcript when you run it, or that one row reads SURVIVED (the transcript is not in the repo). So every row reads KILLED only with `FERRISS_TRANSCRIPT` set. It writes `$MUT_OUT` (default `$TMPDIR/mutate-<port>-results.json`; journey evidence goes to `$TMPDIR/mutate-<port>-evidence`), so two runs on different ports never clobber each other, prints a markdown table and `killed N, survived M, not-applied K`, and exits 1 when a row survived or did not apply. Local only: run it by hand or from a scheduled job of your own; the repo has no scheduled workflow, and it is not part of `npm run check` or CI. `scripts/mutate.test.mjs` (in `npm test`) keeps the table from rotting: every find string occurs once, every journey it names exists, ids are unique, and a row with no journey says which layer alone can see it. When a journey changes, run the rows that name it.
 
-`npm run vacuous` (`scripts/vacuous.mjs`) greps `drive.mjs` for assertions that cannot fail (a swallowed click, a click only if the button exists, `toHaveText(/./)`, absent text no source has). It is a lower bound, not an inventory.
+`npm run vacuous` (`scripts/vacuous.mjs`) greps `drive.mjs` and the files in `e2e/drive/` and `e2e/journeys/` for assertions that cannot fail (a swallowed click, a click only if the button exists, `toHaveText(/./)`, absent text no source has). It is a lower bound, not an inventory.
 
 ## Evidence
 
@@ -123,7 +123,7 @@ This kills only the process group in `$TMPDIR/vdt-$PORT.pid` (never by name) and
 
 - `e2e/vdt {launch|doctor|journey <names…>|list|cleanup}`: executable bash, with the env vars `VDT_PORT` (required for `launch` and `cleanup`), `VDT_EVIDENCE` and `VDT_RUN_ID`.
 - `e2e/run.mjs`: the parallel runner behind `npm run journeys`, `journeys:fast` and `check:full`.
-- `e2e/drive.mjs`: the journeys, run by `vdt journey`. Run it with `node` directly only if `VDT_URL` is set.
+- `e2e/drive.mjs`: the journey runner, run by `vdt journey`. Run it with `node` directly only if `VDT_URL` is set. Its pieces: `e2e/drive/` (`session.mjs`, `actions.mjs`, `registry.mjs`, `context.mjs`) and `e2e/journeys/` (the journeys, one file per group).
 - `e2e/gaps.mjs`: the known-gaps runner behind `npm run gaps` (see Known gaps above); `e2e/known-gaps.json` is its registry.
 
 Feature recipes and what each proves: [features/README.md](features/README.md). `npm run check:maps` (part of `npm run check:fast`) fails when the maps and the journeys' meta disagree, and says how to fix it.

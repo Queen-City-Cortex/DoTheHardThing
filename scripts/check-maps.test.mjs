@@ -1,7 +1,7 @@
 // check:maps on copies of the real e2e/drive.mjs and e2e/features, each with one mutation: every drift it exists for fails
 // with the file:line and the fix, and the real tree passes.
 import { spawnSync } from 'node:child_process';
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -13,17 +13,19 @@ const dirs = [];
 afterAll(() => { for (const d of dirs) rmSync(d, { recursive: true, force: true }); });
 
 const TWO_TABS = "'two-tabs': journey({ id: 'two-tabs', feature: 'history', proves: ['hi-two-tabs'], strings: [";
-/** Copy drive.mjs and the maps to a fresh dir, apply `edit` ({ drive, maps }), run the check on the copy. */
+/** Copy drive.mjs (with the e2e/drive and e2e/journeys files it imports) and the maps to a fresh dir, apply `edit` ({ drive, maps }), run the check on the copy. */
 function run(edit = () => {}) {
   const dir = mkdtempSync(join(tmpdir(), 'check-maps-'));
   dirs.push(dir);
   cpSync(join(ROOT, 'e2e/features'), join(dir, 'features'), { recursive: true });
   cpSync(join(ROOT, 'e2e/drive.mjs'), join(dir, 'drive.mjs'));
+  for (const d of ['drive', 'journeys']) cpSync(join(ROOT, 'e2e', d), join(dir, d), { recursive: true });
+  const driveFiles = () => ['drive.mjs', ...['drive', 'journeys'].flatMap((d) => readdirSync(join(dir, d)).map((f) => `${d}/${f}`))];
   const read = (f) => readFileSync(join(dir, f), 'utf8');
   const write = (f, s) => writeFileSync(join(dir, f), s);
   /** Replace exactly one occurrence, so a fixture that no longer matches the real files fails loudly. */
   const swap = (f, from, to) => { const s = read(f); expect(s.split(from).length, `${f}: ${from}`).toBe(2); write(f, s.replace(from, to)); };
-  edit({ swap, read, write, drive: (a, b) => swap('drive.mjs', a, b), map: (m, a, b) => swap(`features/${m}.md`, a, b) });
+  edit({ swap, read, write, drive: (a, b) => { const owners = driveFiles().filter((f) => read(f).includes(a)); expect(owners.length, `one drive file holds: ${a}`).toBe(1); swap(owners[0], a, b); }, driveFiles, map: (m, a, b) => swap(`features/${m}.md`, a, b) });
   const r = spawnSync(process.execPath, [SCRIPT], { encoding: 'utf8', env: { ...process.env, MAPS_DRIVE: join(dir, 'drive.mjs'), MAPS_FEATURES: join(dir, 'features') } });
   return { status: r.status, out: r.stdout + r.stderr };
 }
@@ -43,7 +45,7 @@ describe('check:maps', () => {
   it('fails a renamed key whose meta.id was left behind', () => {
     const r = run(({ drive }) => drive("'two-tabs': journey({ id: 'two-tabs'", "'two-tabs-stale': journey({ id: 'two-tabs'"));
     expect(r.status).toBe(1);
-    expect(r.out).toMatch(/drive\.mjs:\d+: 'two-tabs-stale': meta\.id is 'two-tabs'; it must equal the journey name: write id: 'two-tabs-stale'/);
+    expect(r.out).toMatch(/\.mjs:\d+: 'two-tabs-stale': meta\.id is 'two-tabs'; it must equal the journey name: write id: 'two-tabs-stale'/);
   });
   it('fails a rename that leaves the old name in the map and the new one in none', () => {
     const r = run(({ drive }) => drive("'two-tabs': journey({ id: 'two-tabs'", "'two-tabs-stale': journey({ id: 'two-tabs-stale'"));
@@ -52,8 +54,8 @@ describe('check:maps', () => {
     expect(r.out).toMatch(/'two-tabs-stale' is in no map: add a "- \*\*<What it shows>\.\*\* Run `vdt journey two-tabs-stale`\. \.\.\." line to the Driving section of .*history\.md/);
   });
   it('fails a rename that leaves the old name in a Proof line (backticked prose)', () => {
-    const r = run(({ swap, read, write }) => {
-      write('drive.mjs', read('drive.mjs').replaceAll('same-answer-two-steps', 'same-answer-steps'));
+    const r = run(({ swap, read, write, driveFiles }) => {
+      for (const f of driveFiles()) write(f, read(f).replaceAll('same-answer-two-steps', 'same-answer-steps'));
       swap('features/first-visit.md', 'Run `vdt journey same-answer-two-steps`', 'Run `vdt journey same-answer-steps`');
     });
     expect(r.status).toBe(1);
@@ -136,34 +138,34 @@ describe('check:maps', () => {
   it('fails a journey without meta', () => {
     const r = run(({ drive }) => drive('const J = {\n', "const J = {\n  'pick-shows-ten': async (s) => { await throughToPick(s); },\n"));
     expect(r.status).toBe(1);
-    expect(r.out).toMatch(/drive\.mjs:\d+: journey 'pick-shows-ten' has no meta: write 'pick-shows-ten': journey\(\{ id: 'pick-shows-ten', feature: '<map>', proves: \[\], strings: \[\] \}, async \(s\) => \{ \.\.\. \}\)/);
+    expect(r.out).toMatch(/\.mjs:\d+: journey 'pick-shows-ten' has no meta: write 'pick-shows-ten': journey\(\{ id: 'pick-shows-ten', feature: '<map>', proves: \[\], strings: \[\] \}, async \(s\) => \{ \.\.\. \}\)/);
   });
   it('fails a meta that is not a plain literal', () => {
     const r = run(({ drive }) => drive("journey({ id: 'two-tabs', feature: 'history'", "journey({ id: 'two-tabs', feature: HISTORY"));
     expect(r.status).toBe(1);
-    expect(r.out).toMatch(/drive\.mjs:\d+: the meta of 'two-tabs' is not a plain literal/);
+    expect(r.out).toMatch(/\.mjs:\d+: the meta of 'two-tabs' is not a plain literal/);
   });
   it('fails an unknown meta key, and a feature that is not a map', () => {
     const r = run(({ drive }) => drive("journey({ id: 'two-tabs', feature: 'history'", "journey({ id: 'two-tabs', owner: 'me', feature: 'histories'"));
     expect(r.status).toBe(1);
     expect(r.out).toMatch(/'two-tabs': unknown meta key 'owner'; the keys are id, feature, proves, strings, note/);
     expect(r.out).toMatch(/'two-tabs': meta\.feature 'histories' is not a map in .*features; use one of analytics, block-timer/);
-    expect(r.out).toMatch(/history\.md:\d+: lists 'two-tabs', but its meta\.feature \(.*drive\.mjs:\d+\) is 'histories'/);
+    expect(r.out).toMatch(/history\.md:\d+: lists 'two-tabs', but its meta\.feature \(.*\.mjs:\d+\) is 'histories'/);
   });
   it('reports a journey added with J.x = ..., which would hide its meta', () => {
     const r = run(({ drive }) => drive('\nconst args = ', "\nJ['late-one'] = async () => {};\nconst args = "));
     expect(r.status).toBe(1);
-    expect(r.out).toMatch(/drive\.mjs:\d+: a journey is added with J\.x = \.\.\.; move it into const J = \{ \.\.\. \}/);
+    expect(r.out).toMatch(/\.mjs:\d+: a journey is added with J\.x = \.\.\.; move it into const J = \{ \.\.\. \}/);
   });
   it('reports an Object.assign(J, x) argument it cannot read, which would hide its journeys', () => {
     const more = "function makeMore() { return { 'ghost': journey({ id: 'ghost', feature: 'history', proves: [], strings: [] }, async () => {}) }; }\nObject.assign(J, makeMore());\n";
     const r = run(({ drive }) => drive('\nconst args = ', `\n${more}const args = `));
     expect(r.status).toBe(1);
-    expect(r.out).toMatch(/drive\.mjs:\d+: Object\.assign\(J, makeMore\(\)\) merges journeys this check cannot read; write the journeys as an object literal assigned to a top-level const, then Object\.assign\(J, thatConst\)/);
+    expect(r.out).toMatch(/\.mjs:\d+: Object\.assign\(J, makeMore\(\)\) merges journeys this check cannot read; write the journeys as an object literal assigned to a top-level const, then Object\.assign\(J, thatConst\)/);
   });
   it('reports an alias of J, through which journeys could be added unseen', () => {
     const r = run(({ drive }) => drive('\nconst args = ', "\nconst J2 = J;\nJ2['ghost'] = async () => {};\nconst args = "));
     expect(r.status).toBe(1);
-    expect(r.out).toMatch(/drive\.mjs:\d+: J2 is another name for J/);
+    expect(r.out).toMatch(/\.mjs:\d+: J2 is another name for J/);
   });
 });

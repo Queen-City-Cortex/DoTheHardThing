@@ -5,8 +5,8 @@ import path from 'node:path';
 import { REPO, fileText, count } from './common.mjs';
 import { MUTATIONS } from './table.mjs';
 
-/** Journey names in e2e/drive.mjs, read the cheap way: each is `'name': journey(` at the start of a line. */
-export const journeyNames = (root = REPO) => new Set([...fileText(root, 'e2e/drive.mjs').matchAll(/^\s*'([a-z0-9-]+)': journey\(/gm)].map((m) => m[1]));
+/** Journey names in e2e/drive.mjs and the journey groups it imports (e2e/journeys/*.mjs), read the cheap way: each is `'name': journey(` at the start of a line. */
+export const journeyNames = (root = REPO) => new Set([...['e2e/drive.mjs', ...fs.readdirSync(path.join(root, 'e2e/journeys')).sort().map((f) => `e2e/journeys/${f}`)].map((f) => fileText(root, f)).join('\n').matchAll(/^\s*'([a-z0-9-]+)': journey\(/gm)].map((m) => m[1]));
 
 /** Every way the table can be wrong against a tree: an empty list means it is OK. */
 export function checkTable(root = REPO, rows = MUTATIONS) {
