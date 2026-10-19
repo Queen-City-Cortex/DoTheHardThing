@@ -53,11 +53,15 @@ const OWNER_IMPORTS = {
 // logic.ts; the day logic, for state.ts, the screen state reducer): they take every other value, the time included, as an argument.
 const PURE = {
   'src/logic.ts': ['./method', './copy'],
+  'src/logic/reminder.ts': ['../copy'], // a piece of logic.ts (see PURE_PARTS)
   'src/state.ts': ['./logic'],
   'src/events.ts': [],
   'src/method.ts': [],
   'src/copy.ts': [],
 }
+// Pieces of a pure module moved into their own files to keep it small: the module re-exports them, so it may import them too
+// (the message above still names its own list). Each piece is itself in PURE and COPY_FILES.
+const PURE_PARTS = { 'src/logic.ts': ['./logic/reminder'] }
 const pureMessage = (file) => `${file} is pure: ${PURE[file].length ? `it may import only ${PURE[file].join(', ')}` : 'no imports'} and no DOM. Take the value as an argument; the caller gets it from now()/today() in src/clock.ts, load() in src/storage.ts or readPermission() in src/reminder.ts.`
 // The method's numbers have one home, src/method.ts. These selectors apply to every src file except method.ts (tests are
 // exempt like every rule here); they are heuristics for the shapes a stray rule number has taken, not a proof.
@@ -83,7 +87,7 @@ const METHOD_SYNTAX = [
 // its talk quotes, tests). scripts/boundaries/app-copy.test.mjs fails when a listed file no longer exists, and when this list is
 // not every non-test .ts/.tsx file directly under src/ minus its NOT_COPY_FILES (copy.ts, method.ts, vite-env.d.ts,
 // each with its reason), so a rename, a removal or a new file cannot change what the rule covers without a test saying so.
-export const COPY_FILES = ['src/App.tsx', 'src/main.tsx', 'src/logic.ts', 'src/reminder.ts', 'src/storage.ts', 'src/analytics.ts', 'src/clock.ts', 'src/decode.ts', 'src/events.ts', 'src/state.ts']
+export const COPY_FILES = ['src/App.tsx', 'src/main.tsx', 'src/logic.ts', 'src/reminder.ts', 'src/storage.ts', 'src/analytics.ts', 'src/clock.ts', 'src/decode.ts', 'src/events.ts', 'src/state.ts', 'src/logic/reminder.ts']
 const MOVE_TEXT = "Move this text to src/copy.ts and render it with t(id); a talk quote needs kind: 'quote' and its transcript timestamp as ref." +
   ' Not words a person reads (a class list, an event name)? Disable this rule on that one line with the reason.'
 const FOUR_WORDS = '/\\S+\\s+\\S+\\s+\\S+\\s+\\S+/'
@@ -110,7 +114,7 @@ function boundaries({ file, ui = false } = {}) {
   if (pure) for (const name of ['window', 'document', 'navigator', 'fetch', 'location', 'globalThis', 'self']) globals.push({ name, message: pureMessage(file) })
   const allowed = OWNER_IMPORTS[file]
   const only = (list) => `^(?!(${list.map((a) => a.replace('.', '\\.')).join('|')})$)` // any import not on the list
-  const imports = pure ? [PURE[file].length ? { regex: only(PURE[file]), message: pureMessage(file) } : { group: ['*'], message: pureMessage(file) }]
+  const imports = pure ? [PURE[file].length ? { regex: only([...PURE[file], ...(PURE_PARTS[file] ?? [])]), message: pureMessage(file) } : { group: ['*'], message: pureMessage(file) }]
     : allowed ? [{ regex: only(allowed), message: `${file} may import only ${allowed.join(', ')}. Take the value as an argument and let App.tsx get it from the other owner (for example now() from src/clock.ts).` }]
     : ui ? [] : [UI_ONLY]
   return {
