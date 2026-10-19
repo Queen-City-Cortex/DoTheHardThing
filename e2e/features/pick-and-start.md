@@ -7,7 +7,7 @@ After naming items, the user answers two yes/no questions per item, sees only it
 - `ps-name` goes through step 1 (pushed: `Skip`, or add items then `Next`), then adds risky and anxious items with `Add`; the list shows each with its tag on every step.
 - `ps-ask` answers the satisfied and leverage questions per item; `Next`, then `Pick one`.
 - `ps-ask-back` `Back` on Ask goes back one item, with that item's answers still on; on the first item it goes back to Name's last step (the anxious one, where the user came from), with every item and answer kept.
-- `ps-look-again` `Look again` on `Nothing got a yes.` opens Ask on its first item, with the answers still on.
+- `ps-look-again` `Look again` on `Nothing got a yes.` opens Ask on its last item, the one the user came from, with the answers still on; `Back` there goes to the item before.
 - `ps-filter` hides No/No items from Pick.
 - `ps-order` Pick lists items tagged risky (rejection or conflict, alone or among other tags) first, then everything else in the order written. Pushed count does not rank, and anxious is not forced last (`pickOrder` in `src/logic.ts`, with `PICK_FIRST` in `src/method.ts`: the risky-first rule is a reading of the talk at 4:32, "some chance of rejection or conflict"; 4:26 is only where the Name step's risky hint comes from). Ask goes in guided order: by an item's earliest tag (pushed, risky, anxious), so a pushed + risky item sits with the pushed ones.
 - `ps-pushed-label` tag chips (step 1 leftovers, the Name list, Ask, Pick) use `tagLabel(tags, pushedCount)`: risky and anxious first, then `pushed` (never `pushed 0×`), or `pushed N×` once carried. Examples: `pushed`, `risky`, `risky · pushed`, `risky · anxious · pushed`, `pushed 1×`, `risky · pushed 1×`. An item named on two or three steps appears once, with the combined label.
@@ -43,6 +43,6 @@ Preconditions:
 ## Gotchas
 
 - Pick has no Back button, so a chosen item can't be invalidated through the UI from Pick. The stale-choice guard is covered by unit tests, not by a journey.
-- `Look again` on `Nothing got a yes.` opens Ask on its first item (Ask's item is component state, `src/App/Ask.tsx`, and Ask carries no step to open on), while `Back` from Ask's first item opens Name on its last step (`opensAt` in `src/state.ts`).
+- `Look again` on `Nothing got a yes.` opens Ask on its last item and `Back` from Ask's first item opens Name on its last step: Ask's item and Name's step are component state (`src/App/Ask.tsx`, `src/App/Name.tsx`), and the screen state carries only the one each opens on (`opensAt` in `src/state.ts`).
 - Choosing a Pick item is a button whose name includes its tag (for example `Ask for the raise risky`). Match it with a regex.
 - The shorter-block options (60/90/120) and the modified-practice line only appear when the bad-day toggle is checked (`small-block-modified` in [returning-user.md](./returning-user.md) drives them). Normal options are 2h/2½h/3h; `BLOCK_MAX` is 180.

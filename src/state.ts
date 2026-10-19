@@ -26,8 +26,9 @@ export type Welcome = { screen: 'welcome' } & Planning;
  *  it opens on: the first, or the last when Back from Ask's first item returns to the step the user came from. A reload
  *  opens Welcome, and About or Your days over Name go back to its first step (it remounts), as before. */
 export type Name = { screen: 'name'; opensAt: 'first' | 'last' } & Planning;
-/** Ask's item index is component state in App/Ask.tsx: Ask opens on its first item (Look again included). */
-export type Ask = { screen: 'ask' } & Planning;
+/** Ask's item index is component state in App/Ask.tsx, like Name's step; the state says only which item it opens on:
+ *  the first, or the last when Look again on Nothing got a yes returns to the item the user came from. */
+export type Ask = { screen: 'ask'; opensAt: 'first' | 'last' } & Planning;
 /** `list` is pickOrder(day.items); `chosen` is one of its items or null, and day.chosenId always agrees with it.
  *  Only pick() builds one, so the list cannot go stale and Start cannot see a choice that is not on it (6ef125f). */
 export type Pick = { screen: 'pick'; list: L.Item[]; chosen: L.Item | null } & Planning;
@@ -37,8 +38,8 @@ export type Close = { screen: 'close'; day: EndedDay };
 export type Closed = { screen: 'closed'; day: ClosedDay };
 /** A screen that shows the day. */
 export type Base = Welcome | Name | Ask | Pick | BlockScreen | Close | Closed;
-/** A day screen an overlay goes back to: Name there opens on its first step, as it did before it said which. */
-export type Under = Exclude<Base, Name> | (Name & { opensAt: 'first' });
+/** A day screen an overlay goes back to: Name and Ask there open on their first step, as they did before they said which. */
+export type Under = Exclude<Base, Name | Ask> | ((Name | Ask) & { opensAt: 'first' });
 export type OverlayName = 'about' | 'days';
 /** About and Your days open over a day screen. The screen they go back to is part of the overlay (`under`), so there is
  *  no separate stack to clear when they close; `prev` holds the overlays opened before this one, so Done goes back one
@@ -113,7 +114,7 @@ export function init(days: L.Day[], now: number): State {
 
 export const isOverlay = (s: State): s is Overlay => s.screen === 'about' || s.screen === 'days';
 /** The day screen an overlay opened over goes back to (see Under). */
-const under = (s: Base): Under => (s.screen === 'name' ? { ...s, opensAt: 'first' } : s);
+const under = (s: Base): Under => (s.screen === 'name' || s.screen === 'ask' ? { ...s, opensAt: 'first' } : s);
 /** The day screen on show, or the one under an open overlay. */
 export const base = (s: State): Base => (isOverlay(s) ? s.under : s);
 export const dayOf = (s: State): L.Day => base(s).day;
@@ -147,16 +148,16 @@ function reduceBase(s: Base, a: Action, now: number): Base {
       if (a.type === 'editItems') return { ...s, day: withItems(s.day, a.items) };
       if (a.type === 'stepBack') return { screen: 'welcome', day: s.day, small: s.small };
       // Two questions is only offered with at least one item, so Ask always has one to show
-      if (a.type === 'namingDone' && L.filled(s.day.items).length > 0) return { screen: 'ask', small: s.small, day: withItems(s.day, L.guidedOrder(L.filled(s.day.items))) };
+      if (a.type === 'namingDone' && L.filled(s.day.items).length > 0) return { screen: 'ask', opensAt: 'first', small: s.small, day: withItems(s.day, L.guidedOrder(L.filled(s.day.items))) };
       return s;
     case 'ask':
       if (a.type === 'answer') return { ...s, day: withItems(s.day, s.day.items.map((i) => (i.id === a.id ? { ...i, [a.field]: a.value } : i))) };
-      if (a.type === 'stepBack') return { ...s, screen: 'name', opensAt: 'last' }; // Back from the first item: Name's last step, where the user came from
+      if (a.type === 'stepBack') return { screen: 'name', opensAt: 'last', day: s.day, small: s.small }; // Back from the first item: Name's last step, where the user came from
       if (a.type === 'askDone') return pick(s.day, s.small);
       return s;
     case 'pick':
       if (a.type === 'choose') return pick({ ...s.day, chosenId: a.id }, s.small);
-      if (a.type === 'stepBack') return { screen: 'ask', day: s.day, small: s.small };
+      if (a.type === 'stepBack') return { screen: 'ask', opensAt: 'last', day: s.day, small: s.small }; // Look again: Ask's last item, where the user came from
       if (a.type === 'startBlock') {
         if (!s.chosen) return s; // Start the block needs a choice from the list
         const block = { ...L.startBlock(a.min, now, s.small), endedAt: null };

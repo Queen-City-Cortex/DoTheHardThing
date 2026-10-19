@@ -6,14 +6,14 @@ import { ALL, Legacy, legacy } from './legacy-model.testlib';
 import { AppM, app } from './app-model.testlib';
 import { Model, T0, RELOAD, StoredKind, aheadOf, Found, label, key, sameView } from './runner.testlib';
 
-/** `substeps`: how often a screen was on show opened on a later sub-step (Name on its last step, after Back from Ask). */
-type Coverage = { changed: Record<S.Action['type'], number>; views: Record<S.Screen, number>; opened: Record<StoredKind, number>; substeps: { nameLast: number } };
+/** `substeps`: how often a screen was on show opened on its last sub-step (Name after Back from Ask, Ask after Look again). */
+type Coverage = { changed: Record<S.Action['type'], number>; views: Record<S.Screen, number>; opened: Record<StoredKind, number>; substeps: { nameLast: number; askLast: number } };
 const coverage = (): Coverage => ({
   changed: { start: 0, setSmall: 0, editItems: 0, namingDone: 0, answer: 0, askDone: 0, stepBack: 0, choose: 0, startBlock: 0, pause: 0, resume: 0,
     drift: 0, stop: 0, tick: 0, didIt: 0, closeDay: 0, startOver: 0, open: 0, back: 0, rollover: 0, otherTabClosed: 0 },
   views: { welcome: 0, name: 0, ask: 0, pick: 0, block: 0, close: 0, closed: 0, about: 0, days: 0 },
   opened: { plan: 0, running: 0, ended: 0, closed: 0 },
-  substeps: { nameLast: 0 },
+  substeps: { nameLast: 0, askLast: 0 },
 });
 /** Feeds the model of App.tsx around the reducer and the model of the App.tsx before it the same UI-gated sequences and
  *  compares them after every action, every reload and every check; stops at the first difference. The sequences are
@@ -78,6 +78,7 @@ function compare(gen: Gen): { diffs: string[]; cov: Coverage; invalid: Found | n
       if (ahead && d.date === ahead.day.date && d.openedAt === ahead.day.openedAt) cov.opened[ahead.kind]++;
       cov.views[x.s.s.screen]++;
       if (x.s.s.screen === 'name' && x.s.s.opensAt === 'last') cov.substeps.nameLast++;
+      if (x.s.s.screen === 'ask' && x.s.s.opensAt === 'last') cov.substeps.askLast++;
     }
   }
   return { diffs, cov, invalid };

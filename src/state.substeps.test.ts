@@ -1,12 +1,12 @@
 // Which sub-step a screen opens on. Name's step and Ask's item are component state (src/App/Name.tsx, src/App/Ask.tsx);
-// the screen state says only which one a screen opens on, so Back from Ask's first item returns to Name's last step,
-// the one the user came from.
+// the screen state says only which one a screen opens on, so Back from Ask's first item returns to Name's last step and
+// Look again on Nothing got a yes to Ask's last item, the one the user came from.
 import { describe, expect, it } from 'vitest';
 import { createElement as h } from 'react';
 import * as L from './logic';
 import * as S from './state';
 import { t } from './copy';
-import { Name } from './App';
+import { Ask, Name } from './App';
 import { text, noop, day, item } from './copy/screens.testlib';
 
 const T0 = new Date('2026-10-14T07:30:00').getTime();
@@ -24,8 +24,8 @@ describe('the sub-step a screen opens on', () => {
     const back = S.reduce(ask, { type: 'stepBack' }, T0);
     expect(back).toMatchObject({ screen: 'name', opensAt: 'last' });
     expect(S.dayOf(back)).toBe(S.dayOf(ask));
-    // and on to Ask again, then Back from Name's first step to Welcome, as before
-    expect(S.reduce(back, { type: 'namingDone' }, T0).screen).toBe('ask');
+    // and on to Ask again (its first item), then Back from Name's first step to Welcome, as before
+    expect(S.reduce(back, { type: 'namingDone' }, T0)).toMatchObject({ screen: 'ask', opensAt: 'first' });
     expect(S.reduce(back, { type: 'stepBack' }, T0).screen).toBe('welcome');
   });
   it('an item edit keeps the step Name opened on (it does not remount)', () => {
@@ -41,11 +41,23 @@ describe('the sub-step a screen opens on', () => {
     const first = go(S.init([], T0), [{ type: 'start' }]);
     expect(S.reduce(S.reduce(first, { type: 'open', to: 'days' }, T0), { type: 'back' }, T0)).toEqual(first);
   });
-  it('Look again on Nothing got a yes opens Ask (on its first item: Ask carries no step to open on)', () => {
+  it('Two questions opens Ask on its first item', () => {
+    expect(toAsk()).toMatchObject({ screen: 'ask', opensAt: 'first' });
+  });
+  it('Look again on Nothing got a yes opens Ask on its last item, the one the user came from', () => {
     const none = go(toAsk(), [...no('a'), ...no('b'), { type: 'askDone' }]);
     expect(none.screen === 'pick' && none.list).toEqual([]);
     const again = S.reduce(none, { type: 'stepBack' }, T0);
-    expect(again).toEqual({ screen: 'ask', day: S.dayOf(none), small: false });
+    expect(again).toEqual({ screen: 'ask', opensAt: 'last', day: S.dayOf(none), small: false });
+    // an answer keeps it; Back from Ask's first item still opens Name on its last step
+    expect(S.reduce(again, { type: 'answer', id: 'b', field: 'satisfied', value: true }, T0)).toMatchObject({ screen: 'ask', opensAt: 'last' });
+    expect(S.reduce(again, { type: 'stepBack' }, T0)).toMatchObject({ screen: 'name', opensAt: 'last' });
+  });
+  it('About or Your days over Ask goes back to its first item, as before', () => {
+    const again = go(toAsk(), [...no('a'), ...no('b'), { type: 'askDone' }, { type: 'stepBack' }]);
+    const about = S.reduce(again, { type: 'open', to: 'about' }, T0);
+    expect(about).toMatchObject({ screen: 'about', under: { screen: 'ask', opensAt: 'first' } });
+    expect(S.reduce(about, { type: 'back' }, T0)).toMatchObject({ screen: 'ask', opensAt: 'first' });
   });
 });
 
@@ -60,5 +72,19 @@ describe('Name renders the step it opens on', () => {
     expect(name('last')).toContain(t('name.anxious'));
     expect(name('last')).toContain(t('twoQuestions'));
     expect(name('last')).not.toContain(t('name.pushed'));
+  });
+});
+
+describe('Ask renders the item it opens on', () => {
+  const items = [item('Taxes', false, ['risky']), item('Call mom', false, ['anxious'])];
+  const ask = (opensAt: 'first' | 'last') => text(h(Ask, { items, opensAt, setItem: noop, onBack: noop, onDone: noop }));
+  it('first: Taxes, with Next', () => {
+    expect(ask('first')).toContain('Taxes');
+    expect(ask('first')).not.toContain('Call mom');
+  });
+  it('last: Call mom, with Pick one', () => {
+    expect(ask('last')).toContain('Call mom');
+    expect(ask('last')).toContain(t('pick.eyebrow'));
+    expect(ask('last')).not.toContain('Taxes');
   });
 });

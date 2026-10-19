@@ -116,7 +116,7 @@ export const firstVisitJourneys = {
     if (items.length !== 1 || items[0].text !== Q || JSON.stringify(items[0].tags) !== '["pushed","risky","anxious"]' || 'tag' in items[0])
       throw new Error('stored items wrong: ' + JSON.stringify(items));
   }),
-  'back-to-last-substep': journey({ id: 'back-to-last-substep', feature: 'first-visit', proves: ['fv-back-from-ask', 'ps-look-again'], strings: ['name.risky', 'name.anxious', 'twoQuestions', 'none.hero', 'none.again'] }, async (s) => { // Back from the first Ask item returns to Name's last step, the one the user came from; Look again opens Ask on its first item
+  'back-to-last-substep': journey({ id: 'back-to-last-substep', feature: 'first-visit', proves: ['fv-back-from-ask', 'ps-look-again'], strings: ['name.risky', 'name.anxious', 'twoQuestions', 'none.hero', 'none.again'] }, async (s) => { // Back from the first Ask item returns to Name's last step and Look again to Ask's last item: the step the user came from
     const p = s.page;
     await s.step('to-ask', async () => {
       await p.getByRole('button', { name: READY }).click();
@@ -146,12 +146,16 @@ export const firstVisitJourneys = {
       await answerAll(p, [[false, false], [false, false]]);
       await expect(h1(p)).toHaveText(t('none.hero'));
     });
-    // Look again opens Ask on its first item today (a separate change, which needs the owner's call, opens it on the last)
     await s.step('look-again', async () => {
       await p.getByRole('button', { name: t('none.again') }).click();
+      await expect(h1(p)).toContainText('Tax letter');
+      await expect(p.getByLabel(fmt.steps(2, 2))).toBeVisible();
+      for (const q of [0, 1]) await expect(p.locator('.q').nth(q).getByRole('button', { name: NO, exact: true })).toHaveClass(/\bon\b/);
+    });
+    await s.step('back-inside-ask', async () => { // Back inside Ask still goes to the item before
+      await p.getByRole('button', { name: BACK }).click();
       await expect(h1(p)).toContainText('Ask for the raise');
       await expect(p.getByLabel(fmt.steps(1, 2))).toBeVisible();
-      for (const q of [0, 1]) await expect(p.locator('.q').nth(q).getByRole('button', { name: NO, exact: true })).toHaveClass(/\bon\b/);
     });
     const items = (await s.store()).days.at(-1).items.map((i) => [i.text, i.satisfied, i.leverage]);
     if (JSON.stringify(items) !== JSON.stringify([['Ask for the raise', false, false], ['Tax letter', false, false]])) throw new Error('items or answers lost: ' + JSON.stringify(items));

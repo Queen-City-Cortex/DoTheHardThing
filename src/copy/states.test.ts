@@ -34,7 +34,7 @@ describe('Name, Ask, the block, Your days and About render their copy in every s
   it('Ask: the item, both questions, Yes and No, and Pick one on the last item', () => {
     const one = ask([item('Tax letter', true, ['anxious'])]);
     for (const id of ['twoQuestions', 'ask.satisfied', 'ask.leverage', 'close.yes', 'no', 'back', 'pick.eyebrow'] as const) expect(one).toContain(t(id));
-    expect(renderToStaticMarkup(h(Ask, { items: [item('Tax letter', true)], setItem: noop, onBack: noop, onDone: noop }))).toContain(`aria-label="${fmt.steps(1, 1)}"`);
+    expect(renderToStaticMarkup(h(Ask, { items: [item('Tax letter', true)], opensAt: 'first', setItem: noop, onBack: noop, onDone: noop }))).toContain(`aria-label="${fmt.steps(1, 1)}"`);
     expect(ask(twoItems)).toContain(t('next'));
     expect(ask([])).toBe('');
   });

@@ -25,7 +25,9 @@ describe('the reducer behaves like the App.tsx before it (8f5dbaa): same UI-gate
     expect(Object.entries(cov.views).filter(([, n]) => n < 300).map(([k, n]) => `${k} ${n}`)).toEqual([]);
     // a rollover opened each kind of record another tab saved for the new date (plan [16], running [19], ended [27], closed [15])
     expect(Object.entries(cov.opened).filter(([, n]) => n < 5).map(([k, n]) => `${k} ${n}`)).toEqual([]);
-    // Name was on show opened on its last step, after Back from Ask's first item, at least 2000 times (nameLast [4533])
-    expect(Object.entries(cov.substeps).filter(([, n]) => n < 2000).map(([k, n]) => `${k} ${n}`)).toEqual([]);
+    // Name was on show opened on its last step, after Back from Ask's first item, at least 2000 times (nameLast [4533]),
+    // and Ask on its last item, after Look again, at least 120 times (askLast [250]: Look again needs every item answered No/No)
+    const SUB: Record<keyof typeof cov.substeps, number> = { nameLast: 2000, askLast: 120 };
+    expect(Object.entries(cov.substeps).filter(([k, n]) => n < SUB[k as keyof typeof SUB]).map(([k, n]) => `${k} ${n}`)).toEqual([]);
   });
 });

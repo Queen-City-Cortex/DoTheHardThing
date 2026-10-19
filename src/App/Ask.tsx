@@ -5,10 +5,10 @@ import type { CopyId } from '../copy';
 import { Steps } from './Welcome';
 import { Chip } from './Name';
 
-export function Ask({ items, setItem, onBack, onDone }: { items: L.Item[]; setItem: (id: string, field: 'satisfied' | 'leverage', value: boolean) => void; onBack: () => void; onDone: () => void }) {
-  const [idx, setIdx] = useState(0);
+export function Ask({ items, opensAt, setItem, onBack, onDone }: { items: L.Item[]; opensAt: 'first' | 'last'; setItem: (id: string, field: 'satisfied' | 'leverage', value: boolean) => void; onBack: () => void; onDone: () => void }) {
+  const [idx, setIdx] = useState(opensAt === 'last' ? items.length - 1 : 0); // Look again opens the last item
   const mounted = useRef(false);
-  useEffect(() => { // the next item's heading takes focus (the first item's is focused by the screen change)
+  useEffect(() => { // the next item's heading takes focus (the one Ask opens on is focused by the screen change)
     if (!mounted.current) { mounted.current = true; return; }
     const h = document.querySelector<HTMLElement>('main h1');
     if (h) { h.tabIndex = -1; h.focus({ preventScroll: true }); }

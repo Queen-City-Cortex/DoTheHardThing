@@ -159,7 +159,7 @@ describe('BG-1 invariants, the reducer (state.ts)', () => {
       // a closed day whose block still runs (a hand-edited store) moves too
       expectMoved({ screen: 'closed', day: { ...running, closed: true } });
       const picking = S.pick({ ...plan, items: plan.items.map((i) => ({ ...i, satisfied: true })), chosenId: 'a' }, false);
-      for (const b of [welcomeS, { ...welcomeS, screen: 'name', opensAt: 'first' } as S.Under, { ...welcomeS, screen: 'ask' } as S.Ask, picking])
+      for (const b of [welcomeS, { ...welcomeS, screen: 'name', opensAt: 'first' } as S.Under, { ...welcomeS, screen: 'ask', opensAt: 'first' } as S.Under, picking])
         for (const s of overlays(b)) expectMoved(s);
     });
     it('on the same date, changes nothing', () => {
@@ -191,7 +191,9 @@ describe('BG-1 invariants, the reducer (state.ts)', () => {
     const i: S.State = { screen: 'about', under: { screen: 'name', opensAt: 'last', day: plan, small: false }, prev: [] };
     // @ts-expect-error Name says which step it opens on
     const j: S.State = { screen: 'name', day: plan, small: false };
-    expect([...ok, a, b, c, d, e, f, g, i, j]).toHaveLength(12);
+    // @ts-expect-error an overlay goes back to Ask on its first item, as it did before Ask said which
+    const k: S.State = { screen: 'days', under: { screen: 'ask', opensAt: 'last', day: plan, small: false }, prev: [] };
+    expect([...ok, a, b, c, d, e, f, g, i, j, k]).toHaveLength(13);
   });
 });
 
