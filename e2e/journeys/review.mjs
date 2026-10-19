@@ -37,7 +37,7 @@ export const reviewJourneys = {
     await newDayAt(p, '2026-10-15T08:00:00');
     await s.step('returning-welcome', async () => { await expect(h1(p)).toHaveText(t('morning.hero')); await expect(p.getByRole('button', { name: t('welcome.ready') })).toBeVisible(); await expect(p.getByRole('button', { name: t('first.start'), exact: true })).toHaveCount(0); await expect(p.getByRole('listitem')).toHaveCount(0); });
   }),
-  'focus-after-nav': journey({ id: 'focus-after-nav', feature: 'resilience', proves: [], strings: ['first.start', 'name.risky', 'name.anxious', 'twoQuestions', 'pick.hero', 'pick.start', 'block.end', 'close.hero', 'closed.done', 'close.today', 'seeDays'] }, async (s) => { // after every screen change focus is on the new heading (the input on the name steps), so a keyboard user can type and press Enter at once
+  'focus-after-nav': journey({ id: 'focus-after-nav', feature: 'resilience', proves: ['rs-focus'], strings: ['first.start', 'name.risky', 'name.anxious', 'twoQuestions', 'pick.hero', 'pick.start', 'block.end', 'close.hero', 'closed.done', 'close.today', 'seeDays'] }, async (s) => { // after every screen change focus is on the new heading (the input on the name steps), so a keyboard user can type and press Enter at once
     const p = s.page; const A = (n) => p.getByRole('button', { name: n, exact: true });
     await s.step('welcome', async () => { await expectFirstWelcome(p); });
     await A(t('first.start')).focus(); await p.keyboard.press('Enter');

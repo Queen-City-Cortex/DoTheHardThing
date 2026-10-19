@@ -23,7 +23,7 @@ The app counts three things and nothing else: `started`, `finished` and `opened_
 
 Preconditions:
 
-- `vdt doctor` prints OK. The journeys record every request with `NET` in `drive.mjs` and fulfil or abort `**/api/event` in the browser context; the local preview has no `/api/event` of its own.
+- `vdt doctor` prints OK. The journeys record every request with `NET` in `e2e/journeys/analytics.mjs` and fulfil or abort `**/api/event` in the browser context; the local preview has no `/api/event` of its own.
 
 - **Counts, once, bare names.** Run `vdt journey analytics-anonymous-counts`. About shows the privacy note; no Cloudflare script; no event before step 0. A full Yes day, then `See your days`: exactly `started`, `finished`, `opened_history`. Reload and reopen Your days: still three. No request URL, body or header matches the item words; local storage holds only `one-thing:events` and `one-thing:v3`.
 - **Share tags, image and About line.** Run `vdt journey social-preview`. Checks `an-share` above (tags, declared size, alts, image dimensions, size, byte-equality with `public/og-image.png`), then the About privacy line and `Free and works offline.`. The image is rebuilt with `node scripts/og/card.mjs` (see docs/social-preview.md); look at `public/og-image.png` after regenerating it.
