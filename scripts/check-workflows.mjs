@@ -30,10 +30,7 @@
 // words, a step that never runs, a shell bug inside a run string, an action whose pinned sha is not the version its
 // comment claims. actionlint (a release binary, run by hand when you change .github/workflows) catches the syntax and
 // shell classes; nothing here replaces it.
-// js-yaml is not a devDependency on purpose: it comes from eslint's dependency tree (eslint > @eslint/eslintrc > js-yaml),
-// hoisted to node_modules/js-yaml and pinned by package-lock.json, the same way check:maps gets acorn. If an eslint bump
-// drops it, this script stops with the message below: then add js-yaml to devDependencies at the version the lockfile
-// had (npm install -D js-yaml@<that version>).
+// js-yaml is a declared devDependency (check:imports keeps it so), not something borrowed from eslint's dependency tree.
 // Usage: node scripts/check-workflows.mjs   (npm run check:workflows). WORKFLOWS_DIR and DEPENDABOT_FILE (relative to the
 // repo root, or absolute) point it at other files, for the tests.
 import fs from 'node:fs';
@@ -41,7 +38,7 @@ import path from 'node:path';
 
 let yaml;
 try { yaml = (await import('js-yaml')).default; } catch {
-  console.error('check:workflows: cannot import js-yaml. js-yaml comes with eslint; if it is gone, add js-yaml as a devDependency at the version package-lock.json had');
+  console.error('check:workflows: cannot import js-yaml. js-yaml is a devDependency, so run npm ci (or npm install -D js-yaml if package.json lost it)');
   process.exit(1);
 }
 

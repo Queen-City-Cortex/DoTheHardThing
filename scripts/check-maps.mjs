@@ -28,7 +28,7 @@ import { COPY } from '../src/copy.ts';
 
 let acorn;
 try { acorn = await import('acorn'); } catch {
-  console.error('check:maps: cannot import acorn. acorn comes with eslint; if it is gone, add acorn as a devDependency');
+  console.error('check:maps: cannot import acorn. acorn is a devDependency, so run npm ci (or npm install -D acorn if package.json lost it)');
   process.exit(1);
 }
 
