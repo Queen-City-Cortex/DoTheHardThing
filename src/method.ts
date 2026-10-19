@@ -1,5 +1,5 @@
 // The method's rules as data. This is the only file where the method's numbers live: block length, the 3 to 5
-// items, the one break and its 10 minutes, the shorter-block options and the late hours. Lint points here when one
+// items, the one break and its 10 minutes, the shorter-block options and the late cutoff. Lint points here when one
 // of them turns up as a bare number anywhere else, and src/method.test.ts checks the logic against every rule.
 // Pure: no imports, no DOM, no clock. Plain TypeScript that Node can run with its types stripped
 // (scripts/check-method-quotes.mjs imports it), so no enums, namespaces or parameter properties.
@@ -13,27 +13,6 @@
 export type Ref = `${number}:${number}`;
 export type Source = 'talk' | 'reading' | 'app';
 interface RuleBase { source: Source; ref: Ref | null; quote: string | null; says: string }
-
-// PRODUCT QUESTION Q1: the late cutoff. Welcome framing (badDay) has used 11:00 and the Pick screen 12:00, and the
-// owner has not picked one. Both are kept exactly as they were until then. Not from the talk.
-export const LATE_CUTOFFS = { welcomeFraming: 11, pickWarning: 12 } as const;
-export type LateCutoff = keyof typeof LATE_CUTOFFS;
-/** True when a local hour (0 to 23) is at or after the cutoff. The one place an hour is compared with a cutoff. */
-export const lateAt = (hour: number, cutoff: LateCutoff): boolean => hour >= LATE_CUTOFFS[cutoff];
-// The cutoffs must be one value once Q1 is decided. OneValue is true only when every member of LATE_CUTOFFS (however
-// many there are) has the same value. While they differ the line under the directive is a type error, which the
-// directive expects. Make them agree and tsc reports the directive as unused; delete the directive while they differ
-// and tsc reports the message below.
-type Cutoffs = typeof LATE_CUTOFFS;
-type OneValue = { [K in LateCutoff]: [Cutoffs[LateCutoff]] extends [Cutoffs[K]] ? true : false }[LateCutoff];
-type Agree = [OneValue] extends [true] ? 'agree' : 'LATE_CUTOFFS differ: keep the @ts-expect-error above until Q1 is decided';
-// @ts-expect-error Q1: once every LATE_CUTOFFS member (welcomeFraming, pickWarning) is one value, delete THIS line and merge LATE_CUTOFFS into one cutoff
-const lateCutoffsAgree: Agree = 'agree';
-void lateCutoffsAgree;
-// Guard for the guard: without `as const` every member widens to number, OneValue turns true and tsc would report the same
-// "unused directive" as a real agreement. If this line errors, put `as const` back on LATE_CUTOFFS; do not delete the line above.
-const cutoffsAreLiterals: number extends Cutoffs[LateCutoff] ? never : true = true;
-void cutoffsAreLiterals;
 
 export const RULES = {
   'three-to-five-items': {
@@ -66,10 +45,12 @@ export const RULES = {
     says: 'On a bad day the user may try a shorter block of 1 to 2 hours, labelled a modified practice. Pick starts on 90 minutes.',
     value: { options: [60, 90] },
   },
+  // One cutoff (PRODUCT QUESTION Q1, decided: 12:00) for the Welcome framing, the bad-day check and the Pick line alike.
+  // Not from the talk: its only clock anchors are "I didn't get up until 1130" (0:29) and "around 12 noon" (0:40).
   'late-start': {
     source: 'app', ref: null, quote: null,
-    says: 'Opening at or after the cutoff counts as a late start. Two cutoffs until Q1 is decided.',
-    value: LATE_CUTOFFS,
+    says: 'Opening at or after 12:00 local time counts as a late start: the Welcome framing, the bad-day check and the Pick line.',
+    value: { hour: 12 },
   },
 } as const satisfies Record<string, RuleBase & { value: unknown }>;
 export type RuleId = keyof typeof RULES;
@@ -86,6 +67,10 @@ export const BREAKS_PER_BLOCK = RULES['one-break-per-block'].value.breaks;
 export const BREAK_LIMIT_MIN = RULES['one-break-per-block'].value.limitMin;
 export const BREAK_LIMIT_MS = BREAK_LIMIT_MIN * 60_000;
 export const PICK_FIRST = RULES['pick-risky-first'].value.first;
+/** The late cutoff: a local hour (0 to 23) at or after it is a late start. */
+export const LATE_CUTOFF = RULES['late-start'].value.hour;
+/** True when a local hour is at or after the late cutoff. The one place an hour is compared with it. */
+export const lateAt = (hour: number): boolean => hour >= LATE_CUTOFF;
 /** The block lengths Pick offers: the shorter options up to a full block, or a full block up to its maximum. */
 export const BLOCK_CHOICES = {
   small: [...SMALL_BLOCK_OPTIONS, BLOCK_MIN],

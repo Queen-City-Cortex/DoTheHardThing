@@ -14,9 +14,8 @@ Each entry has a kind, like the rules in `method.ts`: `quote` (the talk word for
 
 ## Open product questions
 
-- **Q1, the late cutoff.** The Welcome screen treats opening at or after 11:00 as a late start; the Pick screen shows its late line from 12:00. Both are kept as they were. Choosing one hour means deleting the `@ts-expect-error` line in `src/method.ts` and merging `LATE_CUTOFFS` into one value.
 - **A trace of the cited transcript lines.** Committing the few transcript lines the quotes cite (about 8) would let CI check the quotes too. It is the owner's call whether verbatim lines of the talk belong in a public MIT repository; until then the quote checks are local only. A committed trace would also need its own guard, since CI could not tell a hand-edited trace from the talk.
-- **The hour line on a late first visit.** The first welcome shows "Ideally an hour before email or screens." at any hour, also after the 11:00 cutoff where a returning welcome drops it. It was added to the first welcome unconditionally in an earlier change; before that a late first visit had no hour line. The required-lines test keeps today's behavior (`firstWelcomeLate` in `REQUIRED`); whether it is intended is open.
+- **The hour line on a late first visit.** The first welcome shows "Ideally an hour before email or screens." at any hour, also after the 12:00 cutoff where a returning welcome drops it. It was added to the first welcome unconditionally in an earlier change; before that a late first visit had no hour line. The required-lines test keeps today's behavior (`firstWelcomeLate` in `REQUIRED`); whether it is intended is open.
 
 ### Notes that sat at the top of `src/copy.ts`
 

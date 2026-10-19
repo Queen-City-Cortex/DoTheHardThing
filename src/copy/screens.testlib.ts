@@ -46,6 +46,7 @@ export const SCREENS: Record<keyof typeof REQUIRED, string> = {
   morningWelcome: welcome({}),
   lateWelcome: welcome({ late: true, bad: true }),
   missedWelcome: welcome({ missedDays: 2, bad: true }),
+  missedWelcomeLate: welcome({ missedDays: 2, late: true, bad: true }),
   nothingPicked: pick([item('Tax letter', false)]),
   pick: pick([item('Ask for the raise', true)]),
   close: close(null, 0),

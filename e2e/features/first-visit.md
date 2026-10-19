@@ -5,7 +5,7 @@ A brand-new visitor sees one welcome screen at any hour: the promise `Each morni
 ## Sub-features
 
 - `fv-welcome` the new-user welcome at 08:00: eyebrow `Welcome`; h1 `Each morning, do the one hard thing you’ve been avoiding.`; a numbered list of three: `Name what you’re avoiding` / `Write it plainly: three to five, no more.`, `Pick one thing` / `The one that matters most today.`, `Protect one block` / `At least two to three hours, unbroken.` (the talk: [4:11] three to five and no more, [6:05] pick one thing, [5:01] at least two to three hours, [5:22] one uninterrupted block); `Built from Tim Ferriss’s morning method.` with the one link `Watch his short talk` (href `https://x.com/tferriss/status/2110445158206447830`, new tab, `noreferrer`, the same name and URL on About); the `Start` button; under it the small line `Ideally an hour before email or screens.` (the talk's [3:55], "wake up at least an hour before you have to be at a computer screen"), shown at any hour; then `Free · private · works offline` (middle dots, no em dash anywhere). Order top to bottom: Start, hour line, assurance. There is no `Before email` eyebrow here (that belongs to the returning welcomes).
-- `fv-welcome-late` the same welcome at 18:57, after the 11:00 late hour.
+- `fv-welcome-late` the same welcome at 18:57, after the 12:00 late cutoff.
 - `fv-fits` the welcome fits five phone viewports (320×640, 360×640, 375×667, 390×844 and 430×932) with no overflow (`layoutProblems`), `Start` and the talk link are at least 44px tall, Start, the hour line and the assurance all end inside the screen at each of those five (a compact layout applies under 380px wide or 700px tall, `src/index.css`; 320×568, the oldest iPhone SE, is not covered and still scrolls: measured live on 2026-10-19: the welcome page is 50px taller than the screen, `Start` ends at 521px of 568), and its text meets AA in light and dark (`welcome-v1`).
 - `fv-name` `Start` opens step 1 of 3, "What have you been putting off?", with a text input for pushed items and a `Skip` button (it reads `Next` once something is added or typed).
 - `fv-back` every Name step has `Back`; on step 1 it returns to Welcome.
@@ -35,7 +35,7 @@ Preconditions:
 
 ## Gotchas
 
-- The `Ideally an hour before email or screens.` line is on the first-visit welcome at any hour (restored under Start) and on returning morning welcomes (returning-user.md); the late bad-day welcome hides it after 11:00.
+- The `Ideally an hour before email or screens.` line is on the first-visit welcome at any hour (restored under Start) and on returning morning welcomes (returning-user.md); a returning welcome hides it from 12:00.
 - The welcome is decided once at load, from history excluding today. Reloading on day one still shows the new-user welcome (by design).
 - A new user (no leftovers) keeps the step-1 hint `The thing you keep moving to tomorrow. Write it plainly.` and the placeholder `Write it plainly`. Returning users with leftovers see them as toggle buttons on step 1, each named with all its tags (for example `pushed 1×` or `risky · pushed 1×`), above the same input, with the hint `From yesterday, still open. Tap what still matters. …` and the placeholder `Or write something new` (see [returning-user.md](./returning-user.md)).
 - `Back` drops an unadded draft rather than carrying it to another step's tag.

@@ -5,29 +5,34 @@ const EM = String.fromCharCode(0x2014);
 const BRAND_LINE = "export const BRAND = 'Do The Hard Thing';";
 const DOMAIN_LINE = "export const DOMAIN_DISPLAY = 'DoTheHardThing.app';";
 const ASK_BACK = "<button className=\"secondary\" onClick={() => (idx ? setIdx(idx - 1) : onBack())}>{t('back')}</button>";
-const CUTOFFS = 'export const LATE_CUTOFFS = { welcomeFraming: 11, pickWarning: 12 } as const;';
-const PICK_LATE = "const late = isLate(clockNow(), 'pickWarning');";
+const CUTOFF = 'value: { hour: 12 },';
+const BAD_DAY_LATE = 'const late = lateAt(now.getHours());';
+const PICK_LATE = 'const late = isLate(clockNow());';
+const LATE_ONLY = 'const lateOnly = bad.bad && bad.late && bad.missedDays === 0;';
 const PICK_DEFAULT = 'useState<number>(small ? SMALL_BLOCK_DEFAULT : BLOCK_MIN)';
 const ROLLOVER = '  if (dayKey(new Date(now)) === day.date) return false;\n  if (day.closed) return true;';
 
 // { id, what, file, edits: [[find, replace], ...], journeys, only?, why? }. A row with no journey says which layer alone
 // can see it (`only`) and why. Each find must occur exactly once in the file (scripts/mutate.test.mjs checks the table).
 export const MUTATIONS = [
-  // the method's numbers and the two late cutoffs
+  // the method's numbers, the late cutoff and the late welcome
   { id: 'block-min-30', what: 'full block 120 to 30 minutes (method.ts)', file: 'src/method.ts',
     edits: [['value: { min: 120, max: 180, mid: 150 },', 'value: { min: 30, max: 180, mid: 150 },']],
     journeys: ['pick-default-length', 'close-day', 'start-end-block', 'short-block-yes-counts', 'small-block-modified'] },
-  { id: 'welcome-cutoff-12', what: 'Welcome late cutoff 11 to 12 (LATE_CUTOFFS.welcomeFraming)', file: 'src/method.ts',
-    edits: [[CUTOFFS, CUTOFFS.replace('welcomeFraming: 11', 'welcomeFraming: 12')]],
-    journeys: ['late-cutoffs', 'returning-late', 'first-visit-late', 'welcome-hour-line', 'missed-days'] },
-  { id: 'pick-cutoff-11', what: 'Pick late cutoff 12 to 11 (LATE_CUTOFFS.pickWarning)', file: 'src/method.ts',
-    edits: [[CUTOFFS, CUTOFFS.replace('pickWarning: 12', 'pickWarning: 11')]], journeys: ['late-cutoffs', 'review-copy', 'small-block-modified'] },
-  { id: 'welcome-late-from-12-logic', what: 'Welcome reads the Pick cutoff (late framing from 12:00, logic.ts)', file: 'src/logic.ts',
-    edits: [["const late = lateAt(now.getHours(), 'welcomeFraming');", "const late = lateAt(now.getHours(), 'pickWarning');"]], journeys: ['late-cutoffs', 'returning-late'] },
-  { id: 'pick-late-line-from-11', what: 'Pick reads the Welcome cutoff (late line from 11:00)', file: 'src/App/Pick.tsx',
-    edits: [[PICK_LATE, PICK_LATE.replace('pickWarning', 'welcomeFraming')]], journeys: ['late-cutoffs'] },
+  { id: 'late-cutoff-11', what: 'late cutoff 12 to 11 (late-start in RULES)', file: 'src/method.ts',
+    edits: [[CUTOFF, CUTOFF.replace('12', '11')]], journeys: ['late-cutoffs'] },
+  { id: 'late-cutoff-13', what: 'late cutoff 12 to 13 (late-start in RULES)', file: 'src/method.ts',
+    edits: [[CUTOFF, CUTOFF.replace('12', '13')]], journeys: ['late-cutoffs'] },
+  { id: 'welcome-late-from-11-logic', what: 'Welcome turns late an hour before Pick (badDay reads the hour plus one, logic.ts)', file: 'src/logic.ts',
+    edits: [[BAD_DAY_LATE, BAD_DAY_LATE.replace('getHours()', 'getHours() + 1')]], journeys: ['late-cutoffs'] },
+  { id: 'pick-late-line-from-11', what: 'Pick turns late an hour before Welcome (late line from 11:00)', file: 'src/App/Pick.tsx',
+    edits: [[PICK_LATE, PICK_LATE.replace('clockNow()', 'clockNow() + 3_600_000')]], journeys: ['late-cutoffs'] },
   { id: 'pick-late-line-never', what: 'Pick never shows its late line', file: 'src/App/Pick.tsx',
     edits: [[PICK_LATE, PICK_LATE.replace(');', ') && false;')]], journeys: ['late-cutoffs', 'review-copy', 'small-block-modified'] },
+  { id: 'late-only-full-welcome', what: 'a late start with no missed days gets the full welcome back again (Welcome.tsx)', file: 'src/App/Welcome.tsx',
+    edits: [[LATE_ONLY, LATE_ONLY.replace(';', ' && false;')]], journeys: ['late-cutoffs', 'returning-late', 'small-block-modified'] },
+  { id: 'late-only-with-missed-days', what: 'missed days and late get the milder late welcome (Welcome.tsx)', file: 'src/App/Welcome.tsx',
+    edits: [[LATE_ONLY, LATE_ONLY.replace('=== 0', '>= 0')]], journeys: ['late-cutoffs'] },
   { id: 'pick-risky-last', what: 'pick order flipped, risky last', file: 'src/logic.ts',
     edits: [['return [...hl.filter((i) => i.tags.includes(PICK_FIRST)), ...hl.filter((i) => !i.tags.includes(PICK_FIRST))];',
       'return [...hl.filter((i) => !i.tags.includes(PICK_FIRST)), ...hl.filter((i) => i.tags.includes(PICK_FIRST))];']], journeys: ['pick-order-risky-first'] },

@@ -28,18 +28,27 @@ function FirstWelcome({ onStart }: { onStart: () => void }) {
 export function Welcome({ bad, onStart, small, setSmall }: { bad: L.BadDay; onStart: () => void; small: boolean; setSmall: (b: boolean) => void }) {
   const { eyebrow, showHourLine } = L.welcomeFraming(bad);
   const hourLine = showHourLine && <p className="muted small">{t('welcome.hour')}</p>;
+  const shorter = <label className="toggle"><input type="checkbox" checked={small} onChange={(e) => setSmall(e.target.checked)} /> <span>{t('bad.shorter')}</span></label>;
   if (bad.firstVisit && !bad.bad) return <FirstWelcome onStart={onStart} />;
+  // late with no missed days: a milder welcome, the late line as its heading and the shorter block still offered.
+  // The welcome back and its talk lines are for missed days only.
+  const lateOnly = bad.bad && bad.late && bad.missedDays === 0;
   return (
     <section className="card">
       <p className="eyebrow">{eyebrow}</p>
-      {bad.bad ? (
+      {lateOnly ? (
+        <>
+          <h1 className="hero">{t('bad.late')}</h1>
+          {shorter}
+        </>
+      ) : bad.bad ? (
         <>
           <h1 className="hero">{t('bad.hero')}</h1>
-          <p className="muted">{t(bad.missedDays > 0 ? 'bad.missed' : 'bad.late')} {t('bad.everybody')}</p>
+          <p className="muted">{t('bad.missed')} {t('bad.everybody')}</p>
           <blockquote>&ldquo;{t('bad.vonnegut')}&rdquo;<cite>{t('bad.vonnegut.cite')}</cite></blockquote>
           <p className="muted">{t('bad.notAlone')}</p>
           {hourLine}
-          <label className="toggle"><input type="checkbox" checked={small} onChange={(e) => setSmall(e.target.checked)} /> <span>{t('bad.shorter')}</span></label>
+          {shorter}
         </>
       ) : (
         <>

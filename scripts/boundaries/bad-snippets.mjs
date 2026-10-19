@@ -119,7 +119,7 @@ export const BAD = [
   // the worker takes only the event list from the app
   ['worker/index.ts', "import { dayKey } from '../src/logic'; export const x = dayKey;", WORKER],
   ['worker/index.ts', "import { load } from '../src/storage'; export const x = load;", WORKER],
-  // late-hour cutoffs: an hour compared with a literal, in the UI, a pure module, an owner and a plain module
+  // the late-hour cutoff: an hour compared with a literal, in the UI, a pure module, an owner and a plain module
   ['src/App.tsx', 'export const late = (ms: number) => new Date(ms).getHours() >= 12;', HOURS],
   ['src/App.tsx', 'export const late = (hour: number) => hour >= 11;', HOURS],
   ['src/App.tsx', 'declare const hourOf: (t: number) => number; export const late = (t: number) => hourOf(t) < 12;', HOURS],
