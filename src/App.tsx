@@ -37,6 +37,7 @@ export default function App() {
   const bad = useMemo(() => L.badDay(history, new Date(day.openedAt)), [store.days.length, day.date, day.openedAt]); // eslint-disable-line react-hooks/exhaustive-deps
   const [saveFailed, setSaveFailed] = useState(false);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- the store mirrors the open day after each change; doing it in the handlers instead would change when the store and the save update
   useEffect(() => { setStore((st) => putDay(st, day)); }, [day]);
   // move to the real today: keep the day being left (a finished day) in the store, then open today's record or a new one.
   // The reducer makes the move; this asks it the same question first, so the day is saved while it is still the open
@@ -58,6 +59,7 @@ export default function App() {
     window.addEventListener('focus', check);
     return () => { clearInterval(i); document.removeEventListener('visibilitychange', visible); window.removeEventListener('focus', check); };
   }, [rollOver, screen]);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- the effect writes to localStorage (an external system) and keeps whether that write failed
   useEffect(() => { setSaveFailed(!save(store, day.date)); }, [store, day.date]);
   // pull in what other tabs saved. This tab's open day stays as it is, unless another tab closed it meanwhile:
   // then that closed day is shown here too, instead of a stale copy (the reducer compares it with the open day)

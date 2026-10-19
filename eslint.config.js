@@ -1,4 +1,5 @@
 import js from '@eslint/js'
+import { defineConfig } from 'eslint/config'
 import globals from 'globals'
 import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
@@ -125,9 +126,13 @@ function boundaries({ file, ui = false } = {}) {
     'no-restricted-imports': ['error', { patterns: imports }],
   }
 }
+// globals 16 and 17 added these names to globals.node. The scripts run on Node 22 (.nvmrc), which does not define them, so
+// no-undef keeps reporting them there, as it did with globals 15
+const NOT_IN_NODE_22 = ['ErrorEvent', 'localStorage', 'QuotaExceededError', 'sessionStorage', 'Storage', 'Temporal', 'URLPattern']
+const node22 = Object.fromEntries(Object.entries(globals.node).filter(([name]) => !NOT_IN_NODE_22.includes(name)))
 const special = [...new Set([...Object.values(OWNERS).map((o) => o.file), ...Object.keys(OWNER_IMPORTS), ...Object.keys(PURE), ...COPY_FILES])]
 
-export default tseslint.config(
+export default defineConfig(
   { ignores: ['dist'] },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
@@ -152,7 +157,7 @@ export default tseslint.config(
     // the check scripts and the journey runner run in Node (older scripts and journeys evaluate browser code inside page.evaluate and are not linted yet)
     extends: [js.configs.recommended],
     files: ['scripts/check*.mjs', 'scripts/check*/*.mjs', 'scripts/boundaries/*.mjs', 'scripts/install-hooks.mjs', 'scripts/headers-policy.mjs', 'scripts/transcript.mjs', 'scripts/verify-live.mjs', 'scripts/**/*.test.mjs', 'e2e/run.mjs', 'e2e/csp-watch.mjs'],
-    languageOptions: { ecmaVersion: 2023, sourceType: 'module', globals: globals.node },
+    languageOptions: { ecmaVersion: 2023, sourceType: 'module', globals: node22 },
   },
   { files: ['src/**/*.tsx'], ignores: TESTS, rules: boundaries({ ui: true }) },
   { files: ['src/**/*.ts'], ignores: [...TESTS, ...special], rules: boundaries() },

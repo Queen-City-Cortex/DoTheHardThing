@@ -63,6 +63,16 @@ export async function main() {
     });
   });
   const errLines = (out, re) => out.split('\n').map((l) => l.trim()).filter((l) => re.test(l)).slice(0, 4).join(' | ').slice(0, 400);
+  // the error messages of the last eslint run; when eslint stopped before writing the file (a config error), its output stands in
+  const ESLINT_JSON = `${COPY}-eslint.json`;
+  const eslintErrors = (out) => {
+    if (!fs.existsSync(ESLINT_JSON)) return [{ ruleId: 'eslint-crashed', line: 0, column: 0, message: errLines(out, /error/i) || out.trim().split('\n')[0] || '' }];
+    const report = JSON.parse(fs.readFileSync(ESLINT_JSON, 'utf8'));
+    const seen = new Set(); // the compiler rules can report one message several times at one place
+    const errors = report.flatMap((r) => r.messages).filter((m) => m.severity === 2).map((m) => ({ ...m, ruleId: m.ruleId ?? 'parse-error' }))
+      .filter((m) => { const k = `${m.line}:${m.column}:${m.ruleId}`; return !seen.has(k) && seen.add(k); });
+    return errors.length ? errors : [{ ruleId: 'eslint-exit', line: 0, column: 0, message: errLines(out, /\S/) }];
+  };
   const uniq = (xs) => [...new Set(xs)].slice(0, 6);
   const secs = (t0) => Math.round((Date.now() - t0) / 100) / 10;
 
@@ -80,13 +90,15 @@ export async function main() {
   const pristine = new Map(MUTATIONS.map((m) => [m.file, fileText(COPY, m.file)]));
   const restore = () => { for (const [f, text] of pristine) if (fileText(COPY, f) !== text) fs.writeFileSync(path.join(COPY, f), text); };
 
-  // `by` names what caught it: eslint rule ids (the last word of an error line), the first check-text line, the files tsc
+  // `by` names what caught it: eslint rule ids (from the JSON report; `parse-error` for a fatal parse, `eslint-crashed` when
+  // no report was written, `eslint-exit` when eslint failed with no error in the report), the first check-text line, the files tsc
   // reports, the failing vitest test files
   const layer = {
-    lint: async () => { const e = await run(bin('eslint'), ['.']); const c = await run(process.execPath, ['scripts/check-text.mjs']);
-      const rules = e.ok ? [] : uniq(e.out.split('\n').filter((l) => /^\s*\d+:\d+\s+error\s/.test(l)).map((l) => l.trim().split(/\s+/).at(-1)));
-      return { ok: e.ok && c.ok, by: [...rules, ...(c.ok ? [] : [`check-text: ${c.out.trim().split('\n')[0].slice(0, 120)}`])],
-        detail: [e.ok ? '' : errLines(e.out, /error/), c.ok ? '' : errLines(c.out, /\S/)].filter(Boolean).join(' | ') }; },
+    // eslint writes JSON to a file: react-hooks 7 messages span several lines, so the rule id is not on the error line of the text output
+    lint: async () => { fs.rmSync(ESLINT_JSON, { force: true }); const e = await run(bin('eslint'), ['.', '-f', 'json', '-o', ESLINT_JSON]); const c = await run(process.execPath, ['scripts/check-text.mjs']);
+      const errors = e.ok ? [] : eslintErrors(e.out); fs.rmSync(ESLINT_JSON, { force: true });
+      return { ok: e.ok && c.ok, by: [...uniq(errors.map((m) => m.ruleId)), ...(c.ok ? [] : [`check-text: ${c.out.trim().split('\n')[0].slice(0, 120)}`])],
+        detail: [e.ok ? '' : errors.slice(0, 4).map((m) => `${m.line}:${m.column}  error  ${m.message.split('\n')[0]}  ${m.ruleId}`).join(' | ').slice(0, 400), c.ok ? '' : errLines(c.out, /\S/)].filter(Boolean).join(' | ') }; },
     types: async () => { const r = await run(bin('tsc'), ['-b']);
       return { ok: r.ok, by: r.ok ? [] : uniq([...r.out.matchAll(/^(\S+?)\(\d+,\d+\): error TS/gm)].map((m) => m[1])), detail: r.ok ? '' : errLines(r.out, /error TS/) }; },
     unit: async () => { const r = await run(bin('vitest'), ['run', '--reporter=dot']);
