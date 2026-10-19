@@ -35,6 +35,16 @@ Changes that touch what a person sees or does (screens, copy, the block timer, c
 - Do not rename the `localStorage` keys (`one-thing:*`). Existing users' days live there. See [docs/architecture.md](./docs/architecture.md).
 - Never send what a person writes anywhere. Item text stays on the device.
 
+## File size limit (pre-commit hook)
+
+A commit cannot include a file over 5,000 tokens, counted as bytes / 4 (so over 20,000 bytes). Big files are hard for people and agents to read and change whole; split them by responsibility instead.
+
+- **Enabled automatically.** `npm ci` or `npm install` runs the `prepare` script, which sets `core.hooksPath` to the tracked `.githooks/` directory. It does nothing in CI, outside a git checkout, or when `core.hooksPath` is already set in any git config scope, global included (it leaves your value alone and prints a one-line note; to use this hook run `git config core.hooksPath .githooks`, or call `node scripts/check-file-size.mjs` from your own hook).
+- **Staged files only.** It measures what is staged (a partly staged file counts as staged) and skips deleted files, symlinks, binary files and files whose first lines say `@generated` or `DO NOT EDIT`.
+- **When it blocks you,** the message lists each file with its token count and says how to split it. Do not use `git commit --no-verify`.
+- **Not written by hand?** Lockfiles, generated code and data are listed in [`.filesizeignore`](./.filesizeignore): one gitignore-style glob per line, with a comment saying why. Add the path there and stage that file with the commit.
+- `npm run check:file-size` runs the same check on what is staged now; `npm run check:file-size -- --all` lists every tracked file over the limit.
+
 ## Principles
 
 Do The Hard Thing is a calm morning method, not a habit tracker. Contributions must not add streaks, points, badges, levels, leaderboards, guilt-based reminders or any other gamification. A missed day adds nothing and resets nothing. The count of finished days only goes up.

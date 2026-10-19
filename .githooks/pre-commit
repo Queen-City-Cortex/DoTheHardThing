@@ -1,0 +1,4 @@
+#!/bin/sh
+# Pre-commit: refuse a staged file over 5,000 tokens (bytes / 4). See "File size limit" in CONTRIBUTING.md.
+# Enabled by `npm ci` / `npm install` (the prepare script sets core.hooksPath to .githooks).
+exec node scripts/check-file-size.mjs
