@@ -1,0 +1,3 @@
+# Social preview
+
+`index.html` carries Open Graph and Twitter card tags pointing at `https://dothehardthing.app/og-image.png` (1200×630, `public/og-image.png`, about 110 KB). The image shows the title, tagline, `DoTheHardThing.app` and a phone showing the Pick screen. The phone is a real screenshot of the app's Pick screen, so rebuild the image when that screen's look or copy changes: `npm run build`, `npx vite preview --port 4173`, then `node scripts/og/card.mjs` (set `OG_URL` or `OG_OUT` to change the app address or the output file). It needs Playwright's Chromium (`npx playwright install chromium`). Look at the image before committing it. If you fork, edit the title, tagline and URL in `scripts/og/card.mjs` too.

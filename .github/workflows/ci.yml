@@ -27,7 +27,7 @@ jobs:
       - run: npm run check
       # What the deploy will upload, without credentials: Wrangler reads wrangler.jsonc and dist/, checks the assets and the
       # bindings, and stops. It does not prove the account is ready (Analytics Engine must be enabled on it: see
-      # "Before the first deploy" in the README), so that failure is still found only by a real deploy.
+      # "Before the first deploy" in docs/deploy.md), so that failure is still found only by a real deploy.
       - name: Deploy preflight (dry run, no credentials)
         run: npx --yes "wrangler@${WRANGLER_VERSION}" deploy --dry-run --outdir "$RUNNER_TEMP/wrangler-out"
 
