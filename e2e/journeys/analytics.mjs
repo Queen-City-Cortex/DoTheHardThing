@@ -79,7 +79,7 @@ export const analyticsJourneys = {
       if (w !== 1200 || h !== 630) throw new Error(`og-image is ${w}x${h}`);
       if (b.length > 1_000_000) throw new Error(`og-image is ${b.length} bytes; keep it small for crawlers`);
       // what is served is the committed image (public/og-image.png), so a stale deploy or an unregenerated image shows up here
-      const want = crypto.createHash('sha256').update(fs.readFileSync(path.resolve(path.dirname(new globalThis.URL(import.meta.url).pathname), '../public/og-image.png'))).digest('hex');
+      const want = crypto.createHash('sha256').update(fs.readFileSync(path.resolve(path.dirname(new globalThis.URL(import.meta.url).pathname), '../../public/og-image.png'))).digest('hex');
       if (crypto.createHash('sha256').update(b).digest('hex') !== want) throw new Error('served og-image.png differs from public/og-image.png');
     });
     await s.step('about-privacy', async () => { await expectPrivacyNote(p); });
