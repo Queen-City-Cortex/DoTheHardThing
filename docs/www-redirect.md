@@ -1,6 +1,6 @@
 # www to the bare domain
 
-`www.dothehardthing.app` should answer `301` to `https://dothehardthing.app` with the same path and query. This is a Cloudflare zone rule: nothing in the repo or CI creates it, and CI cannot prove it. `wrangler.jsonc` keeps `www.dothehardthing.app` as a custom domain of the Worker, which gives www its proxied DNS record and certificate; the redirect rule answers before the request reaches the Worker, so the Worker never sees www (Cloudflare's custom domains page, "Redirect between www and root domain", points to a redirect rule for this).
+`www.dothehardthing.app` should answer `301` to `https://dothehardthing.app` with the same path and query. This is a Cloudflare zone rule: nothing in the repo or CI creates it, and CI cannot prove it. `wrangler.jsonc` keeps `www.dothehardthing.app` as a custom domain of the Worker, which gives www its proxied DNS record and certificate; a Single Redirect is the first request phase Cloudflare runs, before Workers (Cloudflare's rules execution order, https://developers.cloudflare.com/rules/url-forwarding/), so the Worker should never see www. The custom domains page ("Redirect between www and root domain") recommends a redirect rule for this but its recipe uses a placeholder DNS record, not a Worker custom domain; if www keeps answering 200 after the rule exists, `verify:live --www` stays PENDING and the fix is to look at that (docs/architecture.md, Hosting).
 
 In the Cloudflare dashboard, zone `dothehardthing.app`:
 

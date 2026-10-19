@@ -64,7 +64,7 @@ npm run build
 W=$(mktemp -d); mkdir -p $W/src; cp -r wrangler.jsonc worker dist $W/; cp src/events.ts $W/src/
 (cd $W && npx --yes wrangler@4.86.0 dev --local --ip 127.0.0.1 --port <port> --inspector-port <another port> --compatibility-date 2026-05-03) &
 CSP_LOG=/tmp/csp.log NODE_OPTIONS="--import=$PWD/e2e/csp-watch.mjs" VDT_URL=http://127.0.0.1:<port> TZ=UTC node e2e/run.mjs --workers 2
-grep -vc '^context' /tmp/csp.log   # the violation count: want 0, with context lines present
+grep -c '^violation' /tmp/csp.log   # the violation count: want 0, with context lines present (a `console` line is Chromium's own message about CSP and usually repeats a violation; it is also counted by `grep -vc '^context'`)
 ```
 
 `NODE_OPTIONS` is what reaches the `drive.mjs` children `run.mjs` spawns; `node --import ./e2e/csp-watch.mjs e2e/run.mjs` would load it only in the runner. One journey: `... node --import ./e2e/csp-watch.mjs e2e/drive.mjs first-visit`. The preload refuses to start without `CSP_LOG`. A positive control: in the copy, change a directive in `dist/_headers` to `'none'` (for example `font-src 'none'; style-src 'none'`), restart wrangler and run `first-visit`: the log gets violation lines, while the journey still passes (Report-Only blocks nothing). Stop wrangler afterwards (and its `workerd` children).
