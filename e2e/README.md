@@ -37,7 +37,7 @@ In parallel: `node e2e/run.mjs` runs each journey in its own `drive.mjs` child, 
 Each journey uses a fresh `chromium.launch()` and `newContext()` (390×844, en-US, America/New_York). It then runs `page.clock.install` and `pauseAt(<start>)` before `goto`. Time moves only through `clock.runFor` (timers fire, as in the block countdown), `clock.fastForward` (a jump, as in a long step-away) or `clock.setSystemTime` followed by `reload()` (a new day). Start times are in `START` in `e2e/drive/context.mjs` (the default is 07:30 on 2026-10-14; the late hour is 11:00 local).
 
 Stable handles from `src/App.tsx` and `src/App/*.tsx`:
-- Buttons by role and name: `I'm ready`, `Add`, `Next`, `Skip`, `Two questions`, `Pick one`, `Start the block`, `Step away briefly`, `I'm back`, `End block`, `Yes` / `Not today` (Close, after any block; use `exact: true` for `Yes`), `Close today`, `See your days`, `Start today over`, `Yes, start over`, `Keep today`, `About`, `Your days` (the About row), `Done` (header on About and Your days), `Back`.
+- Buttons by role and name: `I'm ready`, `Add`, `Next`, `Skip`, `Two questions`, `Pick one`, `Start the block`, `Step away briefly`, `Gently come back to your one to-do`, `I'm back`, `End block`, `Yes` / `Not today` (Close, after any block; use `exact: true` for `Yes`), `Close today`, `See your days`, `Start today over`, `Yes, start over`, `Keep today`, `About`, `Your days` (the About row), `Done` (header on About and Your days), `Back`.
 - Headings by level-1 text.
 - The Name input is the only `textbox`, and its aria-label equals the question. On step 1 the list is `listitem`s with `Remove <item>` buttons; on steps 2 and 3 it is the group `Already on your list` of toggle buttons (`aria-pressed` when the item has this step's tag). Use `row(p, text)` for either.
 - Each Yes/No pair sits in a `.q` block (first = satisfied, second = leverage). This is the one CSS handle, because the buttons have no group label.
@@ -53,7 +53,7 @@ To add a journey, add an entry to the group object in `e2e/journeys/` that fits 
 
 ### Running against the live site, and long runs
 
-`vdt journey` always points at the local preview (it exports `VDT_URL` itself). To drive the deployed site run the script directly: `VDT_URL=https://dothehardthing.app VDT_RUN_ID=live node $S/drive.mjs $(node $S/drive.mjs --list)`. Whenever the URL is not `http://127.*`, every journey answers `**/api/event` locally, so a live run never adds to the real analytics counts. The full suite takes about 10 to 15 minutes: start it detached (`nohup … &`, log to a file) so closing your terminal does not kill the preview server or the run, and poll the log. Allow a retry after about 30 s right after a deploy (propagation).
+`vdt journey` always points at the local preview (it exports `VDT_URL` itself). To drive the deployed site run the script directly: `VDT_URL=https://dothehardthing.app VDT_RUN_ID=live node $S/drive.mjs $(node $S/drive.mjs --list)`. Whenever the URL is not `http://127.*`, every journey answers `**/api/event` locally, so a live run never adds to the real analytics counts. The full suite takes about 9 minutes one by one (513 s summed over the 54 journeys locally on 2026-10-19; the live site is slower): start it detached (`nohup … &`, log to a file) so closing your terminal does not kill the preview server or the run, and poll the log. Allow a retry after about 30 s right after a deploy (propagation).
 
 ### CSP watch
 

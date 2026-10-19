@@ -25,16 +25,20 @@ This directory describes how to verify the user-facing behavior of Do The Hard T
 
 Each file has an H1 and a one-paragraph description, then `Sub-features`, `How to get to it (user POV)`, `Driving it with vdt` (opening with `Preconditions:`) and `Gotchas`.
 
-Every journey is listed exactly once, in the map its meta's `feature` names, with a "Run `vdt journey <name>`" line (any code span with `vdt journey <name>` in it counts as a listing); another map that needs it writes see `<name>` in [map.md](./map.md). Each sub-feature id is listed in one map only and is proved by some journey's meta `proves`, or its line says "not verified by vdt" (and why). A new journey: wrap it in `journey({ id, feature, proves, strings }, fn)` in `drive.mjs`, add its line here, then run `npm run check:maps`.
+Every journey is listed exactly once, in the map its meta's `feature` names, with a "Run `vdt journey <name>`" line (any code span with `vdt journey <name>` in it counts as a listing); another map that needs it writes see `<name>` in a link to that map, as [close-day.md](./close-day.md) does for `short-block-yes-counts` in [block-timer.md](./block-timer.md). Each sub-feature id is listed in one map only and is proved by some journey's meta `proves`, or its line says "not verified by vdt" (and why). A new journey: wrap it in `journey({ id, feature, proves, strings }, fn)` in the group file under `e2e/journeys/` that fits it (a new group file is imported and merged into `J` in `e2e/drive.mjs`; see `../README.md`), add its line to its map, then run `npm run check:maps`. A surface vdt cannot drive still gets an entry, with its ids marked "not verified by vdt" and the script or manual check that does cover it.
 
 ## Features
 
 - [First-visit onboarding](./first-visit.md): the new-user welcome at any hour, and the Name steps (one item can answer several steps).
 - [Pick and start](./pick-and-start.md): two questions, the pick list, duration, Start.
-- [Block timer](./block-timer.md): countdown, End block, a step-away longer than 10 minutes, one pause per block, a block across midnight.
+- [Block timer](./block-timer.md): countdown, End block, the come-back button, a step-away longer than 10 minutes, one pause per block, a block across midnight.
 - [Close the day](./close-day.md): "Did you do it?" Yes / Not today whatever the block did, the gentle count, leftovers after each answer, reload persistence, start over with an inline confirmation.
 - [Your days (history)](./history.md): only done days, an up-only count, the empty state, the ways in and back, v2 migration, two tabs.
 - [Morning reminder](./reminder.md): an honest status line, saved only when permission is granted, Off cancels everything.
 - [Anonymous analytics and sharing](./analytics.md): three bare-name counts, once a day, Do Not Track, blocked and offline, the About privacy line, and the social preview tags and `DoTheHardThing.app` image.
-- [Resilience](./resilience.md): offline reload with the service worker, a 375×667 touch phone, reload mid-naming, blocked storage, no Notification API, hostile item text, long unbroken URLs at 320 to 430 wide, and WCAG AA text contrast in light and dark; also the one known gap (Close today needs a scroll at 320×568).
+- [Resilience](./resilience.md): offline reload with the service worker, a 375×667 touch phone, reload mid-naming, blocked storage, no Notification API, hostile item text, long unbroken URLs at 320 to 430 wide, and WCAG AA text contrast in light and dark; keyboard focus after each screen; also the two registered known gaps (a reload or Back loses the step) and the unregistered small scroll at 320×568.
 - [Returning user and bad days](./returning-user.md): late start, missed days, empty peek visits, midnight.
+- [Hosting surface](./hosting.md): security headers, cache rules, `robots.txt` and the `www` redirect. Not driven by vdt; `npm run check:dist` and `npm run verify:live` cover it.
+- [Install as an app (PWA)](./pwa-install.md): the manifest, icons and theme colours. Not driven by vdt; `npm run check:dist` and `npm run verify:live` cover the files.
+- [Crash screen](./crash-screen.md): the error boundary's `Something went wrong.` card. Not verified by vdt or by any test.
+- [Dark mode](./dark-mode.md): the dark palette. Text contrast is proved by `contrast-aa`; the look is not verified.

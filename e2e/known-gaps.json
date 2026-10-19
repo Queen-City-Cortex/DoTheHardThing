@@ -11,7 +11,7 @@
   {
     "id": "back-lands-on-first-substep",
     "journey": "gap-back-to-last-substep",
-    "why": "Back from the first Ask item opens Name on its first step (What have you been putting off?) rather than the last one the user came from, and Look again on Nothing got a yes opens Ask on its first item rather than the last: both components start at step 0 when they mount (src/App.tsx). Recorded in e2e/features/first-visit.md and pick-and-start.md Gotchas.",
+    "why": "Back from the first Ask item opens Name on its first step (What have you been putting off?) rather than the last one the user came from, and Look again on Nothing got a yes opens Ask on its first item rather than the last: both components start at step 0 when they mount (phase is useState(0) at src/App/Name.tsx:21, idx is useState(0) at src/App/Ask.tsx:9). Recorded in e2e/features/first-visit.md and pick-and-start.md Gotchas.",
     "owner": "repo owner",
     "expires": "2026-11-18",
     "fixed_by": "a product call: whether Back and Look again should return to the sub-step the user came from (Name's last step, Ask's last item); if yes, the stepBack screens carry the step to open on",

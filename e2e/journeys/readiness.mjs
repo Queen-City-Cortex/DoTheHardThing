@@ -101,7 +101,7 @@ export const readinessJourneys = {
     await p.getByRole('button', { name: NEXT }).click(); await p.getByRole('button', { name: NEXT }).click(); await p.getByRole('button', { name: t('twoQuestions') }).click(); await at('ask-day2');
     if (problems.length) throw new Error(`${problems.length} layout problems on ${[...new Set(problems.map((x) => x.split(' ')[0]))].join(', ')}: ` + problems.slice(0, 6).join(' | '));
   }),
-  'contrast-aa': journey({ id: 'contrast-aa', feature: 'resilience', proves: ['rs-contrast'], strings: ['twoQuestions', 'pick.start', 'block.stepAway', 'block.back', 'block.end'] }, async (s) => { // every screen of a day, light and dark: all text meets WCAG AA (4.5:1; 3:1 for large text), so the muted grey cannot slip back under
+  'contrast-aa': journey({ id: 'contrast-aa', feature: 'resilience', proves: ['rs-contrast', 'dm-contrast'], strings: ['twoQuestions', 'pick.start', 'block.stepAway', 'block.back', 'block.end'] }, async (s) => { // every screen of a day, light and dark: all text meets WCAG AA (4.5:1; 3:1 for large text), so the muted grey cannot slip back under
     const p = s.page; const fails = [];
     const at = async (label) => {
       for (const scheme of ['light', 'dark']) { await p.emulateMedia({ colorScheme: scheme }); for (const f of await contrastFailures(p)) fails.push(`${label} (${scheme}): ${f}`); }
